@@ -6,11 +6,12 @@
 #include <CryptoCstm.h>
 #include <SpeckTiny.h>
 #include <string.h>
-#include <Base64.h>
+// #include <Base64.h>
 
 //byte RADIO_ADDRESS[6] = {0x30, 0x30, 0x30, 0x30, 0x31}; // 00001
 const byte RADIO_ADDRESS[6] = "00001";
 uint8_t RADIO_READINGPIPE = 0;
+uint8_t RADIO_CHANNEL = 0;
 const size_t KEY_SIZE = 32;
 const size_t STRING_SIZE = 16;
 const uint8_t _PIN_UNUSED = A0;  // For random seed
@@ -73,12 +74,51 @@ void reset();
 void reset() {
   Serial.println("reset()");
   sendTime = 0;
-  radio.openWritingPipe(RADIO_ADDRESS);
-  radio.stopListening();
+
+/* Set the data rate:
+   * RF24_250KBPS: 250 kbit per second
+   * RF24_1MBPS:   1 megabit per second (default)
+   * RF24_2MBPS:   2 megabit per second
+   */
+  radio.setDataRate(RF24_2MBPS);
+  /* Set the power amplifier level rate:
+   * RF24_PA_MIN:   -18 dBm
+   * RF24_PA_LOW:   -12 dBm
+   * RF24_PA_HIGH:   -6 dBm
+   * RF24_PA_MAX:     0 dBm (default)
+   */
+  radio.setPALevel(RF24_PA_LOW);  // sufficient for tests side by side
+  /* Set the channel x with x = 0...125 => 2400 MHz + x MHz 
+   * Default: 76 => Frequency = 2476 MHz
+   * use getChannel to query the channel
+   */
+  radio.setChannel(RADIO_CHANNEL);
+
+  radio.openWritingPipe(RADIO_ADDRESS);  // set the address
+  radio.stopListening();                 // set as transmitter
+  /* You can choose if acknowlegdements shall be requested (true = default) or not (false) */
   radio.setAutoAck(true);
+
+  /* with this you are able to choose if an acknowledgement is requested for 
+   * INDIVIDUAL messages.
+   */
   radio.enableDynamicAck();
+
+
+  /* setRetries(byte delay, byte count) sets the number of retries until the message is
+   * successfully sent. 
+   * Delay time = 250 µs + delay * 250 µs. Default delay = 5 => 1500 µs. Max delay = 15.
+   * Count: number of retries. Default = Max = 15. 
+   */
   radio.setRetries(5, 15);
-  radio.enableDynamicPayloads();
+  /* The default payload size is 32. You can set a fixed payload size which must be the
+   * same on both the transmitter (TX) and receiver (RX)side. Alternatively, you can use 
+   * dynamic payloads, which need to be enabled on RX and TX. 
+   */
+  radio.setPayloadSize(STRING_SIZE);
+  // radio.enableDynamicPayloads();
+
+
 }
 
 
@@ -320,52 +360,6 @@ void setup() {
   }
   Serial.println("RF module ready");
   delay(500);
-
-
-  /* Set the data rate:
-   * RF24_250KBPS: 250 kbit per second
-   * RF24_1MBPS:   1 megabit per second (default)
-   * RF24_2MBPS:   2 megabit per second
-   */
-  radio.setDataRate(RF24_2MBPS);
-  /* Set the power amplifier level rate:
-   * RF24_PA_MIN:   -18 dBm
-   * RF24_PA_LOW:   -12 dBm
-   * RF24_PA_HIGH:   -6 dBm
-   * RF24_PA_MAX:     0 dBm (default)
-   */
-  radio.setPALevel(RF24_PA_LOW);  // sufficient for tests side by side
-  /* Set the channel x with x = 0...125 => 2400 MHz + x MHz 
-   * Default: 76 => Frequency = 2476 MHz
-   * use getChannel to query the channel
-   */
-  radio.setChannel(0);
-
-  radio.openWritingPipe(RADIO_ADDRESS);  // set the address
-  radio.stopListening();                 // set as transmitter
-  /* You can choose if acknowlegdements shall be requested (true = default) or not (false) */
-  radio.setAutoAck(true);
-
-  /* with this you are able to choose if an acknowledgement is requested for 
-   * INDIVIDUAL messages.
-   */
-  radio.enableDynamicAck();
-
-
-  /* setRetries(byte delay, byte count) sets the number of retries until the message is
-   * successfully sent. 
-   * Delay time = 250 µs + delay * 250 µs. Default delay = 5 => 1500 µs. Max delay = 15.
-   * Count: number of retries. Default = Max = 15. 
-   */
-  radio.setRetries(5, 15);
-  /* The default payload size is 32. You can set a fixed payload size which must be the
-   * same on both the transmitter (TX) and receiver (RX)side. Alternatively, you can use 
-   * dynamic payloads, which need to be enabled on RX and TX. 
-   */
-  //radio.setPayloadSize(11);
-  radio.enableDynamicPayloads();
-
-
 
   // Generate new seed for more randomness for future
   // randomSeed(esp_random());

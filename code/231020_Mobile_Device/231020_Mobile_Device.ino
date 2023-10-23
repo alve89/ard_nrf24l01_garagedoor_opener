@@ -5,16 +5,17 @@
 #include <CryptoCstm.h>
 #include <SpeckTiny.h>
 #include <string.h>
-#include <Base64.h>
+// #include <Base64.h>
 
 
 const byte RADIO_ADDRESS[6]             = "00001";
 uint8_t RADIO_READINGPIPE               = 0;
+uint8_t RADIO_CHANNEL                   = 0;
 const size_t KEY_SIZE                   = 32;
 const size_t STRING_SIZE                = 16;
 const uint8_t _PIN_RF_CE                = 7; //D4;
 const uint8_t _PIN_RF_CSN               = 8; //D2; 
-const uint8_t _PIN_BUTTON               = 4;
+// const uint8_t _PIN_BUTTON               = 4;
 
 
 struct CipherVector {
@@ -174,6 +175,50 @@ void displayReceivedData(char *data, size_t dataSize = STRING_SIZE) {
   Serial.println("");
 }
 
+void reset() {
+  Serial.println("reset(): Set as Receiver.");
+
+  /* Set the data rate:
+   * RF24_250KBPS: 250 kbit per second
+   * RF24_1MBPS:   1 megabit per second
+   * RF24_2MBPS:   2 megabit per second
+   */
+  radio.setDataRate(RF24_2MBPS);
+
+  /* Set the power amplifier level rate:
+   * RF24_PA_MIN:   -18 dBm
+   * RF24_PA_LOW:   -12 dBm
+   * RF24_PA_HIGH:   -6 dBm
+   * RF24_PA_MAX:     0 dBm (default)
+   */
+  radio.setPALevel(RF24_PA_LOW); // sufficient for tests side by side
+
+   /* Set the channel x with x = 0...125 => 2400 MHz + x MHz 
+   * Default: 76 => Frequency = 2476 MHz
+   * use getChannel to query the channel
+   */
+  radio.setChannel(RADIO_CHANNEL);
+
+  // Set the address
+  radio.openReadingPipe(RADIO_READINGPIPE, RADIO_ADDRESS); 
+
+  // Set as receiver
+  radio.startListening();
+  /* The default payload size is 32. You can set a fixed payload size which 
+   * must be the same on both the transmitter (TX) and receiver (RX)side. 
+   * Alternatively, you can use dynamic payloads, which need to be enabled 
+   * on RX and TX. 
+   */
+  // radio.enableDynamicPayloads();
+  radio.setPayloadSize(STRING_SIZE);
+
+  // Go!
+  radio.startListening();
+}
+
+
+
+
 void setup() {
   Serial.begin(115200);
   while(!Serial) {}
@@ -184,35 +229,10 @@ void setup() {
   }
   else 
     Serial.println("nRF24L01 module connected!");
-  /* Set the data rate:
-   * RF24_250KBPS: 250 kbit per second
-   * RF24_1MBPS:   1 megabit per second
-   * RF24_2MBPS:   2 megabit per second
-   */
-  radio.setDataRate(RF24_2MBPS);
-  /* Set the power amplifier level rate:
-   * RF24_PA_MIN:   -18 dBm
-   * RF24_PA_LOW:   -12 dBm
-   * RF24_PA_HIGH:   -6 dBm
-   * RF24_PA_MAX:     0 dBm (default)
-   */
-  radio.setPALevel(RF24_PA_LOW); // sufficient for tests side by side 
-   
-   /* Set the channel x with x = 0...125 => 2400 MHz + x MHz 
-   * Default: 76 => Frequency = 2476 MHz
-   * use getChannel to query the channel
-   */
-  radio.setChannel(0);
-  
-  radio.openReadingPipe(RADIO_READINGPIPE, RADIO_ADDRESS); // set the address
-  radio.startListening(); // set as receiver
-  /* The default payload size is 32. You can set a fixed payload size which 
-   * must be the same on both the transmitter (TX) and receiver (RX)side. 
-   * Alternatively, you can use dynamic payloads, which need to be enabled 
-   * on RX and TX. 
-   */
-  //radio.setPayloadSize(11);
-  radio.enableDynamicPayloads();
+
+  // Setup the RF module
+  reset();
+
 }
 
 
@@ -235,7 +255,7 @@ void loop() {
     }
 //    displayRawString(&cipherVector);
     if(handleCipher(&speckTiny, &cipherVector, KEY_SIZE, false)) {
-      radio.setChannel(0);
+      radio.setChannel(RADIO_CHANNEL);
       radio.openWritingPipe(RADIO_ADDRESS);
       radio.stopListening();
       radio.setAutoAck(true);
@@ -266,14 +286,8 @@ void loop() {
         Serial.println("#");
         Serial.println("");
       }
-      
-      Serial.println("Reset RF");
-      radio.setChannel(0);
-      radio.openReadingPipe(RADIO_READINGPIPE, RADIO_ADDRESS); // set the address
-      radio.startListening();
-      radio.enableDynamicPayloads();
-      
     }
+    reset();
     
   }
 }

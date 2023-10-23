@@ -1,0 +1,5 @@
+{
+    "configuration": "cpu=atmega328old",
+    "board": "arduino:avr:nano",
+    "sketch": "code\\231020_Mobile_Device\\231020_Mobile_Device.ino"
+}
