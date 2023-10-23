@@ -14,22 +14,22 @@ uint8_t RADIO_READINGPIPE = 0;
 const size_t KEY_SIZE = 32;
 const size_t STRING_SIZE = 16;
 const uint8_t _PIN_UNUSED = A0;  // For random seed
-const uint8_t _PIN_RELAY = 4;
 const uint8_t _PIN_RF_CE = 8;
 const uint8_t _PIN_RF_CSN = 7;
+const uint8_t _PIN_RELAY = 4;
 const uint8_t _PIN_GARAGE_OCCUPATION = A1;
 const uint8_t _PIN_DOOR_STATUS = 6;
 const uint8_t _PIN_LIGHTBARRIER = 9;
 const bool _INVERT_GARAGE_OCCUPATION = false;
-const bool _INVERT_DOOR_STATUS = false;
+const bool _INVERT_DOOR_STATUS = true;
 const bool _INVERT_LIGHTBARRIER = false;
 const uint8_t MAX_RECEIVE_ATTEMPTS = 10;
 const uint8_t MAX_WAIT_DURATION_SEC = 10;
-const uint8_t TIMEOUT = 3000;                // milliseconds
+const uint16_t TIMEOUT = 3000;                // milliseconds
 const uint8_t DOOR_AREA_CLEARING_TIME = 10;  // seconds
 const uint8_t RF_AREA_CLEARING_TIME = 10;  // seconds
-const uint8_t LDR_TOLERANCE = 5; // integer, will be transformed to percentage
-const uint8_t LDR_TRESHOLD = 600; // value of analoagRead()
+const float LDR_TOLERANCE = 30; // integer, will be transformed to percentage
+const uint16_t LDR_TRESHOLD = 600; // value of analoagRead()
 
 struct CipherVector {
   const char *name;
@@ -93,21 +93,33 @@ bool isGarageOccupied() {
   bool status = false;
 
   // First meausure the current value of the sensor
-  uint8_t value1 = analogRead(_PIN_GARAGE_OCCUPATION);
+  float value1 = analogRead(_PIN_GARAGE_OCCUPATION);
   
-  // Now turn the laser on (or off)
+  // Now turn the laser on
   digitalWrite(_PIN_LIGHTBARRIER, !_INVERT_LIGHTBARRIER);
-  delay(1000);
-
+  
   // Give the sensor a second to adapt to the new brightness
-  uint8_t value2 = analogRead(_PIN_GARAGE_OCCUPATION);
+  delay(2000);
+
+  float value2 = analogRead(_PIN_GARAGE_OCCUPATION);
+  delay(500);
   digitalWrite(_PIN_LIGHTBARRIER, _INVERT_LIGHTBARRIER);
   
+  // Serial.print("value2 ("); Serial.print(value2); Serial.print(") >= value1 ("); Serial.print(value1); Serial.print(") x 0.8 (");Serial.print(value1*0.8);Serial.print("): "); Serial.println((value2 >= (value1 * 0.8)));
+  // Serial.print("value2 ("); Serial.print(value2); Serial.print(") <= value1 ("); Serial.print(value1); Serial.print(") x 1.2 (");Serial.print(value1*1.2);Serial.print("): "); Serial.println((value2 <= (value1 * 1.2)));
+
+  float bottomLimit = value1 * (1 - LDR_TOLERANCE/100);
+  float topLimit = value1 * (1 + LDR_TOLERANCE/100);
+
   // Compare both values
-  if(value1 > value2 * (1-LDR_TRESHOLD/100)
-  || value1 < value1 * (1+LDR_TRESHOLD/100)) {
+  if( (value2 >= bottomLimit)
+  &&  (value2 <= topLimit)) {
     // The sensors value didn't change during measurement => no change in the occupation status
+    // => garage is occupied
     status = true;
+  }
+  else if(value2 == value1) {
+    status == true;
   }
   else {
     // The sensors value changed by more than X percent
@@ -116,13 +128,14 @@ bool isGarageOccupied() {
     status = false;
   }
 
-  Serial.println(status);
+  Serial.print(status); //Serial.print(" ["); Serial.print(value1); Serial.print(" / "); Serial.print(value2); Serial.println("]");
+  Serial.println();
   return status;
 }
 
 bool isDoorClosed() {
   Serial.print("isDoorClosed(): ");
-  bool status = _INVERT_DOOR_STATUS ? abs(digitalRead(_PIN_DOOR_STATUS)) : digitalRead(_PIN_DOOR_STATUS);
+  bool status = _INVERT_DOOR_STATUS ? !digitalRead(_PIN_DOOR_STATUS) : digitalRead(_PIN_DOOR_STATUS);
   Serial.println(status);
   return status;
 }
@@ -194,7 +207,7 @@ void displayReceivedData(char *data, size_t dataSize = STRING_SIZE) {
   Serial.println("");
 }
 
-void displayReceivedData(byte *data, size_t dataSize = STRING_SIZE) {
+void displayReceivedData(byte *data, size_t dataSize) {
   Serial.print("    Received data as char: '");
   for (size_t i = 0; i < dataSize; i++) {
     Serial.print(data[i]);
@@ -362,7 +375,16 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  // isDoorClosed();
+  // delay(500);
+  // isGarageOccupied();
+  // delay(2000);
+  // return;
+
+
+
+
+  // Check if the door is closed and if no car is in the garage
   if (isDoorClosed() && !isGarageOccupied()) {
 
     // 1.   Generate new string
