@@ -18,10 +18,18 @@ const size_t STRING_SIZE              = 16;
 const uint8_t _PIN_UNUSED             = A0;  // For random seed
 const uint8_t _PIN_RF_CE              = 8;
 const uint8_t _PIN_RF_CSN             = 7;
-const uint8_t _PIN_RELAY              = 4;
+const uint8_t _PIN_RELAY              = 5;
 const uint8_t _PIN_GARAGE_OCCUPATION  = A1;
 const uint8_t _PIN_DOOR_STATUS        = 6;
 const uint8_t _PIN_LIGHTBARRIER       = 9;
+const uint8_t _PIN_STATUS_SENDING     = 3;
+const uint8_t _PIN_STATUS_ACK         = 2;
+const uint8_t _PIN_STATUS_NO_ACK      = 1;
+
+const uint16_t _STATUS_SENDING_LED_DURAT  = 1000;
+const uint16_t _STATUS_NO_ACK_LED_DURAT  = 1000;
+const uint16_t _STATUS_ACK_LED_DURAT  = 1000;
+
 const bool _INVERT_GARAGE_OCCUPATION  = false;
 const bool _INVERT_DOOR_STATUS        = true;
 const bool _INVERT_LIGHTBARRIER       = false;
@@ -29,9 +37,12 @@ const uint8_t MAX_RECEIVE_ATTEMPTS    = 10;
 const uint8_t MAX_WAIT_DURATION_SEC   = 10;
 const uint16_t TIMEOUT                = 3000; // milliseconds => time between sending the string and marking this try as failure because of no answer
 const uint8_t DOOR_AREA_CLEARING_TIME = 10;  // seconds
-const uint8_t RF_AREA_CLEARING_TIME   = 10;  // seconds
+const uint8_t RF_AREA_CLEARING_TIME   = 15;  // seconds
 const float LDR_TOLERANCE             = 30; // integer, will be transformed to percentage
 const uint16_t LDR_TRESHOLD           = 600; // value of analoagRead()
+const uint8_t SENDING                 = 1;
+const uint8_t ACK                     = 2;
+const uint8_t NO_ACK                  = 4;
 
 struct CipherVector {
   const char *name;
@@ -71,6 +82,38 @@ bool isDoorClosed();
 bool isGarageOccupied();
 bool isTimeout();
 void reset();
+void toggleStatusLed(uint8_t, uint16_t = 5000);
+
+
+
+
+void toggleStatusLed(uint8_t led, uint16_t duration) {
+  uint8_t ledPin;
+  uint16_t ledDuration;
+ switch(led) {
+    case SENDING:
+      ledPin = _PIN_STATUS_SENDING;
+      ledDuration = _STATUS_SENDING_LED_DURAT;
+      break;
+    case ACK:
+      ledPin = _PIN_STATUS_ACK;
+      ledDuration = _STATUS_ACK_LED_DURAT;
+      break;
+    case NO_ACK:
+      ledPin = _PIN_STATUS_NO_ACK;
+      ledDuration = _STATUS_NO_ACK_LED_DURAT;
+      break;
+    default:
+      ledPin = led;
+      ledDuration = duration;
+      break;
+  }
+
+  digitalWrite(ledPin, HIGH);
+  delay(1000);
+  digitalWrite(ledPin, LOW);
+}
+
 
 
 void reset() {
@@ -82,7 +125,7 @@ void reset() {
    * RF24_1MBPS:   1 megabit per second (default)
    * RF24_2MBPS:   2 megabit per second
    */
-  radio.setDataRate(RF24_2MBPS);
+  radio.setDataRate(RF24_250KBPS);
 
 
   /* Set the power amplifier level rate:
@@ -91,7 +134,7 @@ void reset() {
    * RF24_PA_HIGH:   -6 dBm
    * RF24_PA_MAX:     0 dBm (default)
    */
-  radio.setPALevel(RF24_PA_LOW);
+  radio.setPALevel(RF24_PA_MAX);
 
 
   /* Set the channel x with x = 0...125 => 2400 MHz + x MHz 
@@ -143,6 +186,9 @@ bool isTimeout() {
 
 bool isGarageOccupied() {
   Serial.print("isGarageOccupied(): ");
+  bool status1 = digitalRead(_PIN_GARAGE_OCCUPATION);
+  Serial.println(status1);
+  return status1;
   
   //bool status = _INVERT_GARAGE_OCCUPATION ? abs(digitalRead(_PIN_GARAGE_OCCUPATION)) : digitalRead(_PIN_GARAGE_OCCUPATION);
   bool status = false;
@@ -202,10 +248,11 @@ bool isDoorClosed() {
 }
 
 void openDoor(uint8_t relayPin, bool inverted) {
+  Serial.println("openDoor()");
   digitalWrite(relayPin, !inverted);
   delay(1000);
   digitalWrite(relayPin, inverted);
-  Serial.println("openDoor()");
+
 }
 
 
@@ -373,6 +420,10 @@ void setup() {
   pinMode(_PIN_DOOR_STATUS, INPUT_PULLUP);
   pinMode(_PIN_GARAGE_OCCUPATION, INPUT_PULLUP);
   pinMode(_PIN_LIGHTBARRIER, OUTPUT);
+  pinMode(_PIN_RELAY, OUTPUT);
+  pinMode(_PIN_STATUS_ACK, OUTPUT);
+  pinMode(_PIN_STATUS_NO_ACK, OUTPUT);
+  pinMode(_PIN_STATUS_SENDING, OUTPUT);
   Serial.println("GPIOs ready");
   delay(500);
 
@@ -397,7 +448,6 @@ void setup() {
 }
 
 void loop() {
-
   // Check if the door is closed and if no car is in the garage
   if (isDoorClosed() && !isGarageOccupied()) {
 
@@ -406,6 +456,8 @@ void loop() {
 
     // 2.   Encrypt generated string
     if (handleCipher(&speckTiny, &cipherVector, KEY_SIZE, false)) {
+      
+      toggleStatusLed(SENDING);
 
       // 3.   Send encrypted string and check if there's an ACK
       if (radio.write(cipherVector.bPlaintext, STRING_SIZE)) {
@@ -442,13 +494,13 @@ void loop() {
           byte text[STRING_SIZE] = "";
           radio.read(&text, len);
           displayReceivedData(text);
+          toggleStatusLed(ACK);
 
           if (memcmp(&text, cipherVector.bCiphertext, STRING_SIZE) == 0) {
             // Receiver sent back a valid encrypted string
             // Car is coming!
             Serial.println("Strings match!");
             openDoor();
-
             // Give the door some time to open
             Serial.println("Give the door some time to open");
             while(isDoorClosed()) {
@@ -475,6 +527,7 @@ void loop() {
         }
 
       } else {
+        toggleStatusLed(NO_ACK);
         Serial.println("# Error while sending string");
         Serial.println("#");
         Serial.println("");

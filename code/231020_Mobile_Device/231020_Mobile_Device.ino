@@ -63,7 +63,7 @@ void reset() {
    * RF24_1MBPS:   1 megabit per second
    * RF24_2MBPS:   2 megabit per second
    */
-  radio.setDataRate(RF24_2MBPS);
+  radio.setDataRate(RF24_250KBPS);
 
 
   /* Set the power amplifier level rate:
@@ -72,7 +72,7 @@ void reset() {
    * RF24_PA_HIGH:   -6 dBm
    * RF24_PA_MAX:     0 dBm (default)
    */
-  radio.setPALevel(RF24_PA_LOW); // sufficient for tests side by side 
+  radio.setPALevel(RF24_PA_HIGH); // sufficient for tests side by side 
 
 
    /* Set the channel x with x = 0...125 => 2400 MHz + x MHz 
@@ -241,7 +241,7 @@ void setup() {
 void loop() {
   if(radio.available()){
     byte len = RADIO_DYNAMIC_PAYLOAD_SIZE ? radio.getDynamicPayloadSize() : STRING_SIZE;
-    char text[STRING_SIZE+1] = {0}; 
+    char text[len+1] = {0}; 
     radio.read(&text, len);
     displayReceivedData(text);
     Serial.println();
@@ -255,7 +255,13 @@ void loop() {
       radio.openWritingPipe(RADIO_ADDRESS);
       radio.stopListening();
       radio.setAutoAck(true);
-
+      radio.enableDynamicAck();
+      radio.setRetries(5, 15);
+      if (RADIO_DYNAMIC_PAYLOAD_SIZE) {
+        radio.enableDynamicPayloads();
+      } else {
+        radio.setPayloadSize(STRING_SIZE);
+      }
 
 
   // int encodedLength = Base64.encodedLength(STRING_SIZE);
