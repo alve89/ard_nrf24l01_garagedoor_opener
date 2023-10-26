@@ -36,8 +36,8 @@ const bool _INVERT_LIGHTBARRIER       = false;
 const uint8_t MAX_RECEIVE_ATTEMPTS    = 10;
 const uint8_t MAX_WAIT_DURATION_SEC   = 10;
 const uint16_t TIMEOUT                = 3000; // milliseconds => time between sending the string and marking this try as failure because of no answer
-const uint8_t DOOR_AREA_CLEARING_TIME = 10;  // seconds
-const uint8_t RF_AREA_CLEARING_TIME   = 15;  // seconds
+const uint8_t DOOR_AREA_CLEARING_TIME = 15;  // seconds
+const uint8_t RF_AREA_CLEARING_TIME   = 20;  // seconds
 const float LDR_TOLERANCE             = 30; // integer, will be transformed to percentage
 const uint16_t LDR_TRESHOLD           = 600; // value of analoagRead()
 const uint8_t SENDING                 = 1;
@@ -186,9 +186,9 @@ bool isTimeout() {
 
 bool isGarageOccupied() {
   Serial.print("isGarageOccupied(): ");
-  bool status1 = digitalRead(_PIN_GARAGE_OCCUPATION);
-  Serial.println(status1);
-  return status1;
+  // bool status1 = digitalRead(_PIN_GARAGE_OCCUPATION);
+  // Serial.println(status1);
+  // return status1;
   
   //bool status = _INVERT_GARAGE_OCCUPATION ? abs(digitalRead(_PIN_GARAGE_OCCUPATION)) : digitalRead(_PIN_GARAGE_OCCUPATION);
   bool status = false;
@@ -448,6 +448,7 @@ void setup() {
 }
 
 void loop() {
+
   // Check if the door is closed and if no car is in the garage
   if (isDoorClosed() && !isGarageOccupied()) {
 

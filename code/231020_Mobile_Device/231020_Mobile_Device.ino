@@ -72,7 +72,7 @@ void reset() {
    * RF24_PA_HIGH:   -6 dBm
    * RF24_PA_MAX:     0 dBm (default)
    */
-  radio.setPALevel(RF24_PA_HIGH); // sufficient for tests side by side 
+  radio.setPALevel(RF24_PA_MAX); // sufficient for tests side by side 
 
 
    /* Set the channel x with x = 0...125 => 2400 MHz + x MHz 
