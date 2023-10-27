@@ -6,7 +6,9 @@
 #include <CryptoCstm.h>
 #include <SpeckTiny.h>
 #include <string.h>
-#include <Base64.h>
+#include <Ethernet.h>
+#include <MQTT.h>
+// #include <Base64.h>
 
 //byte RADIO_ADDRESS[6] = {0x30, 0x30, 0x30, 0x30, 0x31}; // 00001
 const byte RADIO_ADDRESS[6]           = "00001";
@@ -30,6 +32,8 @@ const uint16_t _STATUS_SENDING_LED_DURAT  = 1000;
 const uint16_t _STATUS_NO_ACK_LED_DURAT  = 1000;
 const uint16_t _STATUS_ACK_LED_DURAT  = 1000;
 
+
+const uint16_t MAX_MQTT_PAYLOAD_SIZE  = 1024;
 const bool _INVERT_GARAGE_OCCUPATION  = false;
 const bool _INVERT_DOOR_STATUS        = true;
 const bool _INVERT_LIGHTBARRIER       = false;
@@ -40,6 +44,22 @@ const uint8_t DOOR_AREA_CLEARING_TIME = 15;  // seconds
 const uint8_t RF_AREA_CLEARING_TIME   = 20;  // seconds
 const float LDR_TOLERANCE             = 30; // integer, will be transformed to percentage
 const uint16_t LDR_TRESHOLD           = 600; // value of analoagRead()
+
+byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
+byte ip[] = {192, 168, 20, 177};  // <- change to match your network
+IPAddress myDns(192, 168, 20, 1);
+const char mqttHostAddress[] = "homecontrol.lan.k4";
+const char mqttUser[] = "test";
+const char mqttPwd[] = "qoibOIBbfoqib38bqucv3u89qv";
+const char mqttClientId[] = "garage_sensors";
+
+
+
+
+
+EthernetClient net;
+MQTTClient client(MAX_MQTT_PAYLOAD_SIZE);
+
 const uint8_t SENDING                 = 1;
 const uint8_t ACK                     = 2;
 const uint8_t NO_ACK                  = 4;
@@ -76,7 +96,7 @@ void generateNewString(const struct CipherVector *);
 void displayKey(const struct CipherVector *);
 void displayRawString(const struct CipherVector *);
 void displayReceivedData(byte *, size_t = STRING_SIZE);
-void openDoor(uint8_t = _PIN_RELAY, bool = false);
+void openDoor(uint8_t = _PIN_RELAY, bool = false, bool = false);
 void closeDoor(uint8_t = _PIN_RELAY, bool = false);
 bool isDoorClosed();
 bool isGarageOccupied();
@@ -114,10 +134,66 @@ void toggleStatusLed(uint8_t led, uint16_t duration) {
   digitalWrite(ledPin, LOW);
 }
 
+void publishConfig() {
+  
+  String garage_door = F("{"
+  "  \"name\":\"Garage Door\","
+  "  \"device_class\":\"garage\","
+  "  \"retain\": true,"
+  "  \"payload_open\": \"OPEN\","
+  "  \"payload_close\": \"CLOSE\","
+  // "  \"availability_topic\":\"homeassistant/cover/garage_door/availability\","
+  "  \"state_topic\":\"homeassistant/cover/garage_door/state\","
+  "  \"command_topic\": \"homeassistant/cover/garage_door/set\","
+  "  \"state_closed\": \"closed\","
+  "  \"state_open\": \"open\","
+  "  \"state_opening\": \"opening\","
+  "  \"state_closing\": \"closing\","
+  "  \"unique_id\":\"garage_door\","
+  "  \"action_topic\":\"homeassistant/cover/garage_door/action\","
+  "  \"device\": {"
+  "    \"identifiers\":["
+  "      \"garage_sensors/config\""
+  "      ],"
+  "    \"name\":\"Garage Sensors\""
+  "  }"
+  "}");
 
+    String garage_occupancy = F("{"
+  "   \"retain\":true,"  
+  "  \"name\":\"Garage Occupancy\","
+  "  \"device_class\":\"occupancy\","
+  "  \"state_topic\":\"homeassistant/binary_sensor/garage_occupancy/state\","
+  "  \"unique_id\":\"garage_occupancy\","
+  "  \"action_topic\":\"homeassistant/binary_sensor/garage_occupancy/action\","
+  "  \"device\": {"
+  "    \"identifiers\":["
+  "      \"garage_sensors/config\""
+  "      ],"
+  "    \"name\":\"Garage Sensors\""
+  "  }"
+  "}");
+
+  if(client.publish(F("homeassistant/binary_sensor/garage_occupancy/config"), garage_occupancy)
+  && client.publish(F("homeassistant/cover/garage_door/config"), garage_door)) {
+     Serial.println(F("Successfully published configuration payloads"));
+  }
+  else {
+     Serial.println(F("Error publishing configuration payloads"));
+  }
+}
+
+void connect() {
+   Serial.print(F("connecting..."));
+  while (!client.connect(mqttClientId, mqttUser, mqttPwd)) {
+     Serial.print(".");
+    delay(1000);
+  }
+   Serial.println(F("\nconnected!"));
+}
 
 void reset() {
-  Serial.println("reset()");
+   Serial.println("reset()");
   sendTime = 0;
 
     /* Set the data rate:
@@ -185,9 +261,9 @@ bool isTimeout() {
 }
 
 bool isGarageOccupied() {
-  Serial.print("isGarageOccupied(): ");
+   Serial.print(F("isGarageOccupied(): "));
   // bool status1 = digitalRead(_PIN_GARAGE_OCCUPATION);
-  // Serial.println(status1);
+  //  Serial.println(status1);
   // return status1;
   
   //bool status = _INVERT_GARAGE_OCCUPATION ? abs(digitalRead(_PIN_GARAGE_OCCUPATION)) : digitalRead(_PIN_GARAGE_OCCUPATION);
@@ -212,8 +288,8 @@ bool isGarageOccupied() {
   // Turn laser off
   digitalWrite(_PIN_LIGHTBARRIER, _INVERT_LIGHTBARRIER);
   
-  // Serial.print("value2 ("); Serial.print(value2); Serial.print(") >= value1 ("); Serial.print(value1); Serial.print(") x 0.8 (");Serial.print(value1*0.8);Serial.print("): "); Serial.println((value2 >= (value1 * 0.8)));
-  // Serial.print("value2 ("); Serial.print(value2); Serial.print(") <= value1 ("); Serial.print(value1); Serial.print(") x 1.2 (");Serial.print(value1*1.2);Serial.print("): "); Serial.println((value2 <= (value1 * 1.2)));
+  //  Serial.print("value2 (");  Serial.print(value2);  Serial.print(") >= value1 (");  Serial.print(value1);  Serial.print(") x 0.8 ("); Serial.print(value1*0.8); Serial.print("): ");  Serial.println((value2 >= (value1 * 0.8)));
+  //  Serial.print("value2 (");  Serial.print(value2);  Serial.print(") <= value1 (");  Serial.print(value1);  Serial.print(") x 1.2 ("); Serial.print(value1*1.2); Serial.print("): ");  Serial.println((value2 <= (value1 * 1.2)));
 
   float bottomLimit = value1 * (1 - LDR_TOLERANCE/100);
   float topLimit = value1 * (1 + LDR_TOLERANCE/100);
@@ -235,20 +311,37 @@ bool isGarageOccupied() {
     status = false;
   }
 
-  Serial.print(status); //Serial.print(" ["); Serial.print(value1); Serial.print(" / "); Serial.print(value2); Serial.println("]");
-  Serial.println();
+   Serial.print(status); // Serial.print(" [");  Serial.print(value1);  Serial.print(" / ");  Serial.print(value2);  Serial.println("]");
+   Serial.println();
+
+  if(status) {
+    client.publish(F("homeassistant/binary_sensor/garage_occupancy/state"), F("on"));
+  }
+  else {
+    client.publish(F("homeassistant/binary_sensor/garage_occupancy/state"), F("off"));
+  }
   return status;
 }
 
 bool isDoorClosed() {
-  Serial.print("isDoorClosed(): ");
+   Serial.print(F("isDoorClosed(): "));
   bool status = _INVERT_DOOR_STATUS ? !digitalRead(_PIN_DOOR_STATUS) : digitalRead(_PIN_DOOR_STATUS);
-  Serial.println(status);
+   Serial.println(status);
+  if(status) {
+    client.publish(F("homeassistant/cover/garage_door/state"), F("closed"));
+  }
+  else {
+    client.publish(F("homeassistant/cover/garage_door/state"), F("open"));
+  }
   return status;
 }
 
-void openDoor(uint8_t relayPin, bool inverted) {
-  Serial.println("openDoor()");
+void openDoor(uint8_t relayPin, bool inverted, bool useAsAlias) { // Using as Alias by actually calling closeDoor() 
+  if(!useAsAlias) {
+    Serial.println(F("openDoor()"));
+    client.publish(F("homeassistant/cover/garage_door/state"), F("opening"));
+  }
+
   digitalWrite(relayPin, !inverted);
   delay(1000);
   digitalWrite(relayPin, inverted);
@@ -258,12 +351,14 @@ void openDoor(uint8_t relayPin, bool inverted) {
 
 // Alias of openDoor()
 void closeDoor(uint8_t relayPin, bool inverted) {
-  openDoor(relayPin, inverted);
+  Serial.println(F("closeDoor()"));
+  client.publish(F("homeassistant/cover/garage_door/state"), F("closing"));
+  openDoor(relayPin, inverted, true);
 }
 
-
 void generateNewString(const struct CipherVector *vector) {
-  Serial.println(F("######## Generating new random string... ########"));
+   Serial.println(F("######## Generating new random string... ########"));
+  client.publish(F("homeassistant/cover/garage_door/action"), F("Generate new string"));
   uint8_t i = 0;
   while (i < STRING_SIZE) {
     char letter = letters[random(0, sizeof(letters) - 1)];
@@ -271,10 +366,13 @@ void generateNewString(const struct CipherVector *vector) {
     cipherVector.cPlaintext[i] = letter;
     i++;
   }
+  client.publish(F("homeassistant/cover/garage_door/action"), F("New string generated"));
 }
 
 bool handleCipher(BlockCipher *cipher, const struct CipherVector *vector, size_t keySize, bool decryption) {
-  Serial.println("######## Encrypting string... ########");
+   Serial.println(F("######## Encrypting string... ########"));
+  client.publish(F("homeassistant/cover/garage_door/action"), F("Encrypt string"));
+
 
   // Display used key
   displayKey(vector);
@@ -289,116 +387,117 @@ bool handleCipher(BlockCipher *cipher, const struct CipherVector *vector, size_t
   // Display encrypted string
   displayEncryptedString(vector);
 
-  Serial.print("    ");
-  Serial.print(vector->name);
-  Serial.print(" Encryption ");
+   Serial.print(F("    "));
+   Serial.print(vector->name);
+   Serial.print(F(" Encryption "));
 
   if (memcmp(BUFFER, vector->bCiphertext, STRING_SIZE) == 0) {
-    Serial.println("Passed");
+     Serial.println(F("Passed"));
+    client.publish(F("homeassistant/cover/garage_door/action"), F("Encryption passed"));
     return true;
   } else {
-    Serial.println("Failed");
+     Serial.println(F("Failed"));
+    client.publish(F("homeassistant/cover/garage_door/action"), F("Encryption passed"));
     return false;
   }
 }
 
 void displayReceivedData(char *data, size_t dataSize = STRING_SIZE) {
-  Serial.print("Received data as char: ");
-  Serial.println(data);
-  Serial.print("Received data as HEX: ");
+   Serial.print(F("Received data as char: "));
+   Serial.println(data);
+   Serial.print(F("Received data as HEX: "));
   for (size_t i = 0; i < dataSize; i++) {
-    Serial.print("0x");
+     Serial.print(F("0x"));
     if (data[i] < 16) {
-      Serial.print("0");
+       Serial.print(F("0"));
     }
-    Serial.print(data[i], HEX);
+     Serial.print(data[i], HEX);
     if (i < dataSize - 1) {
-      Serial.print(", ");
+       Serial.print(F(", "));
     }
   }
-  Serial.println("");
+   Serial.println(F(""));
 }
 
 void displayReceivedData(byte *data, size_t dataSize) {
-  Serial.print("    Received data as char: '");
+   Serial.print(F("    Received data as char: '"));
   for (size_t i = 0; i < dataSize; i++) {
-    Serial.print(data[i]);
+     Serial.print(data[i]);
   }
-  Serial.println("'");
+   Serial.println(F("'"));
 
-  Serial.print("    Received data as HEX: '");
+   Serial.print(F("    Received data as HEX: '"));
   for (size_t i = 0; i < dataSize; i++) {
-    Serial.print("0x");
+     Serial.print(F("0x"));
     if (data[i] < 16) {
-      Serial.print("0");
+       Serial.print(F("0"));
     }
-    Serial.print(data[i], HEX);
+     Serial.print(data[i], HEX);
     if (i < dataSize - 1) {
-      Serial.print(", ");
+       Serial.print(F(", "));
     }
   }
-  Serial.println("'");
+   Serial.println(F("'"));
 }
 
-
 void displayEncryptedString(const struct CipherVector *vector) {
-  Serial.print("    Encrypted string as HEX byte: ");
+   Serial.print(F("    Encrypted string as HEX byte: "));
 
   for (uint8_t i = 0; i < STRING_SIZE; i++) {
     cipherVector.bCiphertext[i] = BUFFER[i];
-    Serial.print("0x");
+     Serial.print(F("0x"));
 
     if (cipherVector.bCiphertext[i] < 16) {
-      Serial.print("0");
+       Serial.print(F("0"));
     }
 
-    Serial.print(cipherVector.bCiphertext[i], HEX);
+     Serial.print(cipherVector.bCiphertext[i], HEX);
     if (i < STRING_SIZE - 1) {
-      Serial.print(", ");
+       Serial.print(F(", "));
     }
   }
-  Serial.println();
+   Serial.println();
 }
 
 void displayKey(const struct CipherVector *vector) {
-  Serial.print(F("    Key as plaintext: "));
-  Serial.println(vector->cKey);
-  Serial.print(F("    Key as HEX bytes: "));
+   Serial.print(F("    Key as plaintext: "));
+   Serial.println(vector->cKey);
+   Serial.print(F("    Key as HEX bytes: "));
   for (uint8_t i = 0; i < KEY_SIZE; i++) {
-    Serial.print("0x");
+     Serial.print(F("0x"));
 
     if (vector->bKey[i] < 16) {
-      Serial.print("0");
+       Serial.print(F("0"));
     }
 
-    Serial.print(vector->bKey[i], HEX);
+     Serial.print(vector->bKey[i], HEX);
     if (i < KEY_SIZE - 1) {
-      Serial.print(", ");
+       Serial.print(F(", "));
     }
   }
-  Serial.println();
+   Serial.println();
 }
 
 void displayRawString(const struct CipherVector *vector) {
-  Serial.print("    String as plaintext: ");
+   Serial.print(F("    String as plaintext: "));
   for (uint8_t i = 0; i < STRING_SIZE; i++) {
-    Serial.print(vector->cPlaintext[i]);
+     Serial.print(vector->cPlaintext[i]);
   }
-  Serial.println();
+   Serial.println();
 
 
-  Serial.print("    String as HEX bytes: ");
+   Serial.print(F("    String as HEX bytes: "));
   for (uint8_t i = 0; i < STRING_SIZE; i++) {
-    Serial.print("0x");
+     Serial.print(F("0x"));
     if (vector->bPlaintext[i] < 16) {
-      Serial.print("0");
+       Serial.print(F("0"));
     }
-    Serial.print(vector->bPlaintext[i], HEX);
+     Serial.print(vector->bPlaintext[i], HEX);
     if (i < STRING_SIZE - 1) {
-      Serial.print(", ");
+       Serial.print(F(", "));
     }
   }
-  Serial.println();
+   Serial.println();
 }
 
 void setup() {
@@ -412,7 +511,7 @@ void setup() {
     digitalWrite(LED_BUILTIN, LOW);
     delay(50);
   }
-  Serial.println("Serial ready");
+  Serial.println(F("Serial ready"));
   delay(500);
 
 
@@ -424,17 +523,17 @@ void setup() {
   pinMode(_PIN_STATUS_ACK, OUTPUT);
   pinMode(_PIN_STATUS_NO_ACK, OUTPUT);
   pinMode(_PIN_STATUS_SENDING, OUTPUT);
-  Serial.println("GPIOs ready");
+  Serial.println(F("GPIOs ready"));
   delay(500);
 
 
   // Setup RF
 
   if (!radio.begin()) {
-    Serial.println("RF module not connected");
+    Serial.println(F("RF module not connected"));
     while (!radio.begin()) {}
   }
-  Serial.println("RF module ready");
+  Serial.println(F("RF module ready"));
   delay(500);
 
   // Set up all relevant settings for the RF module
@@ -444,10 +543,48 @@ void setup() {
   // randomSeed(esp_random());
   randomSeed(analogRead(_PIN_UNUSED));
 
-  Serial.println("I am the stationary device - ready!");
+  // Setup network
+
+  Serial.println(F("Initialize Ethernet with DHCP:"));
+  if (Ethernet.begin(mac) == 0) {
+    Serial.println(F("Failed to configure Ethernet using DHCP"));
+    // Check for Ethernet hardware present
+    if (Ethernet.hardwareStatus() == EthernetNoHardware) {
+      Serial.println(F("Ethernet shield was not found.  Sorry, can't run without hardware."));
+      while (true) {
+        delay(1); // do nothing, no point running without Ethernet hardware
+      }
+    }
+    if (Ethernet.linkStatus() == LinkOFF) {
+      Serial.println(F("Ethernet cable is not connected."));
+    }
+    // try to congifure using IP address instead of DHCP:
+    Ethernet.begin(mac, ip, myDns);
+    Serial.println(F("Started Ethernet with manually assigned IP"));
+    
+  } else {
+    Serial.print(F("  DHCP assigned IP "));
+    Serial.println(Ethernet.localIP());
+  }
+
+  // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
+  // by Arduino. You need to set the IP address directly.
+  client.begin(mqttHostAddress, net);
+  // client.onMessage(messageReceived);
+
+  connect();
+  publishConfig();
+
+
+   Serial.println(F("I am the stationary device - ready!"));
 }
 
 void loop() {
+  client.loop();
+
+  if (!client.connected()) {
+    connect();
+  }
 
   // Check if the door is closed and if no car is in the garage
   if (isDoorClosed() && !isGarageOccupied()) {
@@ -461,11 +598,13 @@ void loop() {
       toggleStatusLed(SENDING);
 
       // 3.   Send encrypted string and check if there's an ACK
+      client.publish(F("homeassistant/cover/garage_door/action"), F("Send encrypted string by RF, wait for ack"));
       if (radio.write(cipherVector.bPlaintext, STRING_SIZE)) {
         sendTime = millis();
-        Serial.println("# String successfully sent");
-        Serial.println("#");
-        Serial.println("");
+        client.publish(F("homeassistant/cover/garage_door/action"), F("Ack successful, wait for answer"));
+         Serial.println(F("# String successfully sent"));
+         Serial.println(F("#"));
+         Serial.println(F(""));
 
         // 4.   Wait until receiving a string or until timeout
         radio.setChannel(0);
@@ -480,7 +619,8 @@ void loop() {
 
         while (!radio.available()) {
           if (isTimeout()) {
-            Serial.println("############# TIMEOUT ############");
+             Serial.println(F("############# TIMEOUT ############"));
+            client.publish(F("homeassistant/cover/garage_door/action"), F("Answer timed out"));
             
             // Set all relevant settings for the RF module
             // Set it back to transmitter mode
@@ -494,27 +634,34 @@ void loop() {
           byte len = RADIO_DYNAMIC_PAYLOAD_SIZE ? radio.getDynamicPayloadSize() : STRING_SIZE;
           byte text[STRING_SIZE] = "";
           radio.read(&text, len);
+          client.publish(F("homeassistant/cover/garage_door/action"), F("Answer received"));
           displayReceivedData(text);
           toggleStatusLed(ACK);
 
           if (memcmp(&text, cipherVector.bCiphertext, STRING_SIZE) == 0) {
             // Receiver sent back a valid encrypted string
             // Car is coming!
-            Serial.println("Strings match!");
+             Serial.println("Strings match!");
+            client.publish(F("homeassistant/cover/garage_door/action"), F("Received string is valid"));
             openDoor();
+            client.publish(F("homeassistant/cover/garage_door/action"), F("Opening door"));
             // Give the door some time to open
-            Serial.println("Give the door some time to open");
+             Serial.println(F("Give the door some time to open"));
             while(isDoorClosed()) {
-              delay(1);
+              delay(10);
             }
 
-            unsigned long triggerTime = millis();
 
+            unsigned long triggerTime = millis();
+            client.publish(F("homeassistant/cover/garage_door/state"), F("open"));
+            client.publish(F("homeassistant/cover/garage_door/action"), F("Wait for car to appear in garage"));
             // Wait until car is in the garage
             while (!isGarageOccupied()) {
               // If no car appears after a while close the door
               if(millis() - triggerTime > RF_AREA_CLEARING_TIME*1000) {
-                Serial.println("No car appeared - close the door");
+                 Serial.println(F("No car appeared - close the door"));
+                client.publish(F("homeassistant/cover/garage_door/action"), F("No car appeared"));
+                closeDoor();
                 break;
               }
             }
@@ -523,50 +670,59 @@ void loop() {
             // Set it back to receiver mode
             reset();
           } else {
-            Serial.println("Strings NOT match!");
+             Serial.println(F("Strings NOT match!"));
+            client.publish(F("homeassistant/cover/garage_door/action"), F("Received string is invalid"));
           }
         }
 
       } else {
         toggleStatusLed(NO_ACK);
-        Serial.println("# Error while sending string");
-        Serial.println("#");
-        Serial.println("");
+        client.publish(F("homeassistant/cover/garage_door/action"), F("No ack"));
+         Serial.println(F("# Error while sending string"));
+         Serial.println(F("#"));
+         Serial.println(F(""));
       }
     }
   } else if (!isDoorClosed() && isGarageOccupied()) {
     // Car is in the garage and the door is (already) open
-    Serial.println("Waiting for the car to leave the garage");
+     Serial.println(F("Waiting for the car to leave the garage"));
+    client.publish(F("homeassistant/cover/garage_door/action"), F("Wait for the car to leave the garage or the door to be closed manually"));
     while (isGarageOccupied()) {
       // Wait until the car left the garage or until the door is manually closed
       if(isDoorClosed()) {
 
         // Set all relevant settings for the RF module
         // Set it back to receiver mode
+        client.publish(F("homeassistant/cover/garage_door/action"), F("Door manually closed"));
+        client.publish(F("homeassistant/cover/garage_door/state"), F("closed"));
         reset();
         return;
       }
       delay(1);
     }
     // Car has left the garage => wait X more seconds until closing the door
-    Serial.print("Waiting for the car to be away from the door - wait ");
-    Serial.print(DOOR_AREA_CLEARING_TIME);
-    Serial.println(" seconds");
+    client.publish(F("homeassistant/cover/garage_door/action"), F("Wait for the car to clear the door area"));
+     Serial.print(F("Wait for the car to leave the door area - "));
+     Serial.print(DOOR_AREA_CLEARING_TIME);
+     Serial.println(F(" seconds"));
     for (uint8_t i = DOOR_AREA_CLEARING_TIME; i > 0; i--) {
-      Serial.print(i);
-      Serial.print("...");
+       Serial.print(i);
+       Serial.print(F("..."));
       delay(1000);
     }
-    Serial.println();
+     Serial.println();
     closeDoor();
+    client.publish(F("homeassistant/cover/garage_door/action"), F("Close door"));
 
     // Wait until the door is closed
     while (!isDoorClosed()) {
       delay(1);
     }
+    client.publish(F("homeassistant/cover/garage_door/state"), F("closed"));
 
     // Wait until the car is far enough away
-    Serial.println("Wait until the car is far enough away");
+     Serial.println(F("Wait until the car is far enough away"));
+    client.publish(F("homeassistant/cover/garage_door/action"), F("Wait for the car to clear the RF area"));
     delay(RF_AREA_CLEARING_TIME*1000);
   } else if (isDoorClosed() && isGarageOccupied()) {
     // Do nothing

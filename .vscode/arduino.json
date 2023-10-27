@@ -1,5 +1,5 @@
 {
-    "configuration": "cpu=atmega328old",
-    "board": "arduino:avr:nano",
-    "sketch": "code\\231020_Mobile_Device\\231020_Mobile_Device.ino"
+    "board": "arduino:avr:uno",
+    "sketch": "code\\231020_Stationary_Device\\231020_Stationary_Device.ino",
+    "port": "COM8"
 }
