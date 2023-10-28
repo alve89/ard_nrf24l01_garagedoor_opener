@@ -22,7 +22,8 @@ const uint8_t _PIN_RF_CE              = 8;
 const uint8_t _PIN_RF_CSN             = 7;
 const uint8_t _PIN_RELAY              = 5;
 const uint8_t _PIN_GARAGE_OCCUPATION  = A1;
-const uint8_t _PIN_DOOR_STATUS        = 6;
+const uint8_t _PIN_DOOR_CLOSED        = 6;
+const uint8_t _PIN_DOOR_OPEN          = 10;
 const uint8_t _PIN_LIGHTBARRIER       = 9;
 const uint8_t _PIN_STATUS_SENDING     = 3;
 const uint8_t _PIN_STATUS_ACK         = 2;
@@ -90,6 +91,12 @@ RF24 radio(_PIN_RF_CE, _PIN_RF_CSN);  // CE, CSN
 byte BUFFER[STRING_SIZE];
 const char letters[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 unsigned long sendTime = 0;
+String garageDoorPayloadReceived = "";
+String garageDoorPayloadOpen = "OPEN";
+String garageDoorPayloadClose = "CLOSE";
+
+
+
 
 bool handleCipher(BlockCipher *, const struct CipherVector *, size_t, bool = true);
 void generateNewString(const struct CipherVector *);
@@ -103,9 +110,17 @@ bool isGarageOccupied();
 bool isTimeout();
 void reset();
 void toggleStatusLed(uint8_t, uint16_t = 5000);
+void messageReceived(String, String);
 
 
+void messageReceived(String &topic, String &payload) {
+  Serial.println("incoming: " + topic + " - " + payload);
 
+  // Note: Do not use the client in the callback to publish, subscribe or
+  // unsubscribe as it may cause deadlocks when other things arrive while
+  // sending and receiving acknowledgments. Instead, change a global variable,
+  // or push to a queue and handle it in the loop after calling `client.loop()`.
+}
 
 void toggleStatusLed(uint8_t led, uint16_t duration) {
   uint8_t ledPin;
@@ -150,7 +165,7 @@ void publishConfig() {
   "  \"state_opening\": \"opening\","
   "  \"state_closing\": \"closing\","
   "  \"unique_id\":\"garage_door\","
-  "  \"action_topic\":\"homeassistant/cover/garage_door/action\","
+//  "  \"action_topic\":\"homeassistant/sensor/garage_current_action/state\","
   "  \"device\": {"
   "    \"identifiers\":["
   "      \"garage_sensors/config\""
@@ -174,13 +189,54 @@ void publishConfig() {
   "  }"
   "}");
 
-  if(client.publish(F("homeassistant/binary_sensor/garage_occupancy/config"), garage_occupancy)
-  && client.publish(F("homeassistant/cover/garage_door/config"), garage_door)) {
-     Serial.println(F("Successfully published configuration payloads"));
-  }
-  else {
-     Serial.println(F("Error publishing configuration payloads"));
-  }
+/*
+mqtt:
+  - text:
+      name: "Remote LCD screen"
+      icon: mdi:ab-testing
+      mode: "text"
+      command_topic: "txt/cmd"
+      state_topic: "txt/state"
+      min: 2
+      max: 20
+
+*/
+
+/*
+      String garage_sensors_action = F("{"
+  "   \"retain\":true,"  
+  "   \"name\":\"Garage Current Action\","
+  "   \"state_topic\":\"homeassistant/text/garage_current_action/state\","
+  "   \"command_topic\":\"homeassistant/text/garage_current_action/set\","
+  "   \"unique_id\":\"garage_occupancy\","
+  "   \"device\": {"
+  "     \"identifiers\":["
+  "       \"garage_sensors/config\""
+  "       ],"
+  "      \"name\":\"Garage Sensors\""
+  "   }"
+  "}" );
+*/
+
+
+        String garage_sensors_action = F("{"
+  "   \"retain\":true,"  
+  "   \"name\":\"Garage Current Action\","
+  "   \"state_topic\":\"homeassistant/sensor/garage_current_action/state\","
+  // "   \"command_topic\":\"homeassistant/text/garage_current_action/set\","
+  "   \"unique_id\":\"garage_current_action\","
+  "   \"device\": {"
+  "     \"identifiers\":["
+  "       \"garage_sensors/config\""
+  "       ],"
+  "      \"name\":\"Garage Sensors\""
+  "   }"
+  "}" );
+ 
+
+  client.publish(F("homeassistant/binary_sensor/garage_occupancy/config"), garage_occupancy);
+  client.publish(F("homeassistant/cover/garage_door/config"), garage_door);
+  client.publish(F("homeassistant/sensor/garage_current_action/config"), garage_sensors_action);
 }
 
 void connect() {
@@ -261,10 +317,19 @@ bool isTimeout() {
 }
 
 bool isGarageOccupied() {
-   Serial.print(F("isGarageOccupied(): "));
-  // bool status1 = digitalRead(_PIN_GARAGE_OCCUPATION);
-  //  Serial.println(status1);
-  // return status1;
+  Serial.print(F("isGarageOccupied(): "));
+  bool status1 = digitalRead(_PIN_GARAGE_OCCUPATION);
+  Serial.println(status1);
+
+  if(status1) {
+    client.publish(F("homeassistant/binary_sensor/garage_occupancy/state"), F("ON"));
+  }
+  else {
+    client.publish(F("homeassistant/binary_sensor/garage_occupancy/state"), F("OFF"));
+  }
+
+  
+  return status1;
   
   //bool status = _INVERT_GARAGE_OCCUPATION ? abs(digitalRead(_PIN_GARAGE_OCCUPATION)) : digitalRead(_PIN_GARAGE_OCCUPATION);
   bool status = false;
@@ -325,7 +390,7 @@ bool isGarageOccupied() {
 
 bool isDoorClosed() {
    Serial.print(F("isDoorClosed(): "));
-  bool status = _INVERT_DOOR_STATUS ? !digitalRead(_PIN_DOOR_STATUS) : digitalRead(_PIN_DOOR_STATUS);
+  bool status = _INVERT_DOOR_STATUS ? !digitalRead(_PIN_DOOR_CLOSED) : digitalRead(_PIN_DOOR_CLOSED);
    Serial.println(status);
   if(status) {
     client.publish(F("homeassistant/cover/garage_door/state"), F("closed"));
@@ -358,7 +423,7 @@ void closeDoor(uint8_t relayPin, bool inverted) {
 
 void generateNewString(const struct CipherVector *vector) {
    Serial.println(F("######## Generating new random string... ########"));
-  client.publish(F("homeassistant/cover/garage_door/action"), F("Generate new string"));
+  client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Generate new string"));
   uint8_t i = 0;
   while (i < STRING_SIZE) {
     char letter = letters[random(0, sizeof(letters) - 1)];
@@ -366,12 +431,12 @@ void generateNewString(const struct CipherVector *vector) {
     cipherVector.cPlaintext[i] = letter;
     i++;
   }
-  client.publish(F("homeassistant/cover/garage_door/action"), F("New string generated"));
+  client.publish(F("homeassistant/sensor/garage_current_action/state"), F("New string generated"));
 }
 
 bool handleCipher(BlockCipher *cipher, const struct CipherVector *vector, size_t keySize, bool decryption) {
    Serial.println(F("######## Encrypting string... ########"));
-  client.publish(F("homeassistant/cover/garage_door/action"), F("Encrypt string"));
+  client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Encrypt string"));
 
 
   // Display used key
@@ -393,11 +458,11 @@ bool handleCipher(BlockCipher *cipher, const struct CipherVector *vector, size_t
 
   if (memcmp(BUFFER, vector->bCiphertext, STRING_SIZE) == 0) {
      Serial.println(F("Passed"));
-    client.publish(F("homeassistant/cover/garage_door/action"), F("Encryption passed"));
+    client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Encryption passed"));
     return true;
   } else {
      Serial.println(F("Failed"));
-    client.publish(F("homeassistant/cover/garage_door/action"), F("Encryption passed"));
+    client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Encryption passed"));
     return false;
   }
 }
@@ -500,6 +565,10 @@ void displayRawString(const struct CipherVector *vector) {
    Serial.println();
 }
 
+
+
+
+
 void setup() {
   // put your setup code here, to run once:
   // Setup Serial
@@ -516,7 +585,7 @@ void setup() {
 
 
 
-  pinMode(_PIN_DOOR_STATUS, INPUT_PULLUP);
+  pinMode(_PIN_DOOR_CLOSED, INPUT_PULLUP);
   pinMode(_PIN_GARAGE_OCCUPATION, INPUT_PULLUP);
   pinMode(_PIN_LIGHTBARRIER, OUTPUT);
   pinMode(_PIN_RELAY, OUTPUT);
@@ -570,13 +639,15 @@ void setup() {
   // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
   // by Arduino. You need to set the IP address directly.
   client.begin(mqttHostAddress, net);
-  // client.onMessage(messageReceived);
+  client.onMessage(messageReceived);
 
   connect();
   publishConfig();
+  client.subscribe("homeassistant/cover/garage_door/set");
+// client.unsubscribe("/hello");
 
 
-   Serial.println(F("I am the stationary device - ready!"));
+  Serial.println(F("I am the stationary device - ready!"));
 }
 
 void loop() {
@@ -598,10 +669,10 @@ void loop() {
       toggleStatusLed(SENDING);
 
       // 3.   Send encrypted string and check if there's an ACK
-      client.publish(F("homeassistant/cover/garage_door/action"), F("Send encrypted string by RF, wait for ack"));
+      client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Send encrypted string by RF, wait for ack"));
       if (radio.write(cipherVector.bPlaintext, STRING_SIZE)) {
         sendTime = millis();
-        client.publish(F("homeassistant/cover/garage_door/action"), F("Ack successful, wait for answer"));
+        client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Ack successful, wait for answer"));
          Serial.println(F("# String successfully sent"));
          Serial.println(F("#"));
          Serial.println(F(""));
@@ -620,7 +691,7 @@ void loop() {
         while (!radio.available()) {
           if (isTimeout()) {
              Serial.println(F("############# TIMEOUT ############"));
-            client.publish(F("homeassistant/cover/garage_door/action"), F("Answer timed out"));
+            client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Answer timed out"));
             
             // Set all relevant settings for the RF module
             // Set it back to transmitter mode
@@ -634,7 +705,7 @@ void loop() {
           byte len = RADIO_DYNAMIC_PAYLOAD_SIZE ? radio.getDynamicPayloadSize() : STRING_SIZE;
           byte text[STRING_SIZE] = "";
           radio.read(&text, len);
-          client.publish(F("homeassistant/cover/garage_door/action"), F("Answer received"));
+          client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Answer received"));
           displayReceivedData(text);
           toggleStatusLed(ACK);
 
@@ -642,9 +713,9 @@ void loop() {
             // Receiver sent back a valid encrypted string
             // Car is coming!
              Serial.println("Strings match!");
-            client.publish(F("homeassistant/cover/garage_door/action"), F("Received string is valid"));
+            client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Received string is valid"));
             openDoor();
-            client.publish(F("homeassistant/cover/garage_door/action"), F("Opening door"));
+            client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Opening door"));
             // Give the door some time to open
              Serial.println(F("Give the door some time to open"));
             while(isDoorClosed()) {
@@ -654,13 +725,13 @@ void loop() {
 
             unsigned long triggerTime = millis();
             client.publish(F("homeassistant/cover/garage_door/state"), F("open"));
-            client.publish(F("homeassistant/cover/garage_door/action"), F("Wait for car to appear in garage"));
+            client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Wait for car to appear in garage"));
             // Wait until car is in the garage
             while (!isGarageOccupied()) {
               // If no car appears after a while close the door
               if(millis() - triggerTime > RF_AREA_CLEARING_TIME*1000) {
                  Serial.println(F("No car appeared - close the door"));
-                client.publish(F("homeassistant/cover/garage_door/action"), F("No car appeared"));
+                client.publish(F("homeassistant/sensor/garage_current_action/state"), F("No car appeared"));
                 closeDoor();
                 break;
               }
@@ -671,13 +742,13 @@ void loop() {
             reset();
           } else {
              Serial.println(F("Strings NOT match!"));
-            client.publish(F("homeassistant/cover/garage_door/action"), F("Received string is invalid"));
+            client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Received string is invalid"));
           }
         }
 
       } else {
         toggleStatusLed(NO_ACK);
-        client.publish(F("homeassistant/cover/garage_door/action"), F("No ack"));
+        client.publish(F("homeassistant/sensor/garage_current_action/state"), F("No ack"));
          Serial.println(F("# Error while sending string"));
          Serial.println(F("#"));
          Serial.println(F(""));
@@ -686,14 +757,14 @@ void loop() {
   } else if (!isDoorClosed() && isGarageOccupied()) {
     // Car is in the garage and the door is (already) open
      Serial.println(F("Waiting for the car to leave the garage"));
-    client.publish(F("homeassistant/cover/garage_door/action"), F("Wait for the car to leave the garage or the door to be closed manually"));
+    client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Wait for the car to leave the garage or the door to be closed manually"));
     while (isGarageOccupied()) {
       // Wait until the car left the garage or until the door is manually closed
       if(isDoorClosed()) {
 
         // Set all relevant settings for the RF module
         // Set it back to receiver mode
-        client.publish(F("homeassistant/cover/garage_door/action"), F("Door manually closed"));
+        client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door manually closed"));
         client.publish(F("homeassistant/cover/garage_door/state"), F("closed"));
         reset();
         return;
@@ -701,7 +772,7 @@ void loop() {
       delay(1);
     }
     // Car has left the garage => wait X more seconds until closing the door
-    client.publish(F("homeassistant/cover/garage_door/action"), F("Wait for the car to clear the door area"));
+    client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Wait for the car to clear the door area"));
      Serial.print(F("Wait for the car to leave the door area - "));
      Serial.print(DOOR_AREA_CLEARING_TIME);
      Serial.println(F(" seconds"));
@@ -712,7 +783,7 @@ void loop() {
     }
      Serial.println();
     closeDoor();
-    client.publish(F("homeassistant/cover/garage_door/action"), F("Close door"));
+    client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Close door"));
 
     // Wait until the door is closed
     while (!isDoorClosed()) {
@@ -722,7 +793,7 @@ void loop() {
 
     // Wait until the car is far enough away
      Serial.println(F("Wait until the car is far enough away"));
-    client.publish(F("homeassistant/cover/garage_door/action"), F("Wait for the car to clear the RF area"));
+    client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Wait for the car to clear the RF area"));
     delay(RF_AREA_CLEARING_TIME*1000);
   } else if (isDoorClosed() && isGarageOccupied()) {
     // Do nothing
