@@ -884,7 +884,7 @@ void loop() {
   checkChangedMqttTopic();
 
   // Send generated string
-  // // Handle the RF communication
+  // Handle the RF communication
   // if(handleCipher(&speckTiny, &cipherVector, KEY_SIZE, false)) cipherSuccessful = true;
 
 
@@ -898,7 +898,8 @@ void loop() {
   // Check if the door is closed and if no car is in the garage
   if (isGarageDoorClosed.currentState && !garageOccupancy.currentState) {
 
-
+    // 1.   Generate new string
+    generateNewString(&cipherVector);
 
     // 2.   Encrypt generated string
     if(handleCipher(&speckTiny, &cipherVector, KEY_SIZE, false)) {
