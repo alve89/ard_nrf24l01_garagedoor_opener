@@ -9,7 +9,20 @@
 #include <Ethernet.h>
 #include <MQTT.h>
 // #include <Base64.h>
+// #include <garageOpenerLib.h>
 
+class sensor {
+  public:
+    sensor();
+    sensor(String);
+    bool hasStateChanged();
+    bool lastState;
+    bool currentState;
+    String mqttStateTopic;
+    String mqttPayload;
+};
+
+const bool USE_NETWORK                = true;
 //byte RADIO_ADDRESS[6] = {0x30, 0x30, 0x30, 0x30, 0x31}; // 00001
 const byte RADIO_ADDRESS[6]           = "00001";
 uint8_t RADIO_READINGPIPE             = 0;
@@ -17,17 +30,20 @@ uint8_t RADIO_CHANNEL                 = 0;
 bool RADIO_DYNAMIC_PAYLOAD_SIZE       = false;
 const size_t KEY_SIZE                 = 32;
 const size_t STRING_SIZE              = 16;
-const uint8_t _PIN_UNUSED             = A0;  // For random seed
-const uint8_t _PIN_RF_CE              = 8;
-const uint8_t _PIN_RF_CSN             = 7;
-const uint8_t _PIN_RELAY              = 5;
-const uint8_t _PIN_GARAGE_OCCUPATION  = A1;
-const uint8_t _PIN_DOOR_CLOSED        = 6;
-const uint8_t _PIN_DOOR_OPEN          = 10;
+
+
+const uint8_t _PIN_GARAGE_OCCUPANCY   = A1;
+const uint8_t _PIN_DOOR_CLOSED        = 11;
+const uint8_t _PIN_DOOR_OPEN          = 6;
 const uint8_t _PIN_LIGHTBARRIER       = 9;
-const uint8_t _PIN_STATUS_SENDING     = 3;
-const uint8_t _PIN_STATUS_ACK         = 2;
-const uint8_t _PIN_STATUS_NO_ACK      = 1;
+const uint8_t _PIN_RF_CE              = 7;
+const uint8_t _PIN_RF_CSN             = 8;
+const uint8_t _PIN_RELAY              = 5;
+const uint8_t _PIN_STATUS_NO_ACK      = 4;
+const uint8_t _PIN_STATUS_ACK         = 3;
+const uint8_t _PIN_STATUS_SENDING     = 2;
+const uint8_t _PIN_UNUSED             = A0;  // For random seed
+
 
 const uint16_t _STATUS_SENDING_LED_DURAT  = 1000;
 const uint16_t _STATUS_NO_ACK_LED_DURAT  = 1000;
@@ -36,7 +52,8 @@ const uint16_t _STATUS_ACK_LED_DURAT  = 1000;
 
 const uint16_t MAX_MQTT_PAYLOAD_SIZE  = 1024;
 const bool _INVERT_GARAGE_OCCUPATION  = false;
-const bool _INVERT_DOOR_STATUS        = true;
+const bool _INVERT_DOOR_OPEN_STATUS   = true;
+const bool _INVERT_DOOR_CLOSED_STATUS = true;
 const bool _INVERT_LIGHTBARRIER       = false;
 const uint8_t MAX_RECEIVE_ATTEMPTS    = 10;
 const uint8_t MAX_WAIT_DURATION_SEC   = 10;
@@ -54,7 +71,9 @@ const char mqttUser[] = "test";
 const char mqttPwd[] = "qoibOIBbfoqib38bqucv3u89qv";
 const char mqttClientId[] = "garage_sensors";
 
-
+sensor isGarageDoorClosed((String) "homeassistant/cover/garage_door/state");
+sensor isGarageDoorOpen((String) "homeassistant/cover/garage_door/state");
+sensor garageOccupancy((String) "homeassistant/binary_sensor/garage_occupancy/state");
 
 
 
@@ -91,9 +110,25 @@ RF24 radio(_PIN_RF_CE, _PIN_RF_CSN);  // CE, CSN
 byte BUFFER[STRING_SIZE];
 const char letters[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 unsigned long sendTime = 0;
-String garageDoorPayloadReceived = "";
-String garageDoorPayloadOpen = "OPEN";
-String garageDoorPayloadClose = "CLOSE";
+
+
+
+
+String changedTopic = "";
+String changedTopicPayload = "";
+String garageDoorCommandTopic = "homeassistant/cover/garage_door/set";
+String garageDoorCommandPayloadOpen = "OPEN";
+String garageDoorCommandPayloadClose = "CLOSE";
+String garageDoorCommandPayloadStop = "STOP";
+
+
+
+
+
+  sensor::sensor() {}
+  sensor::sensor(String topic) {
+      mqttStateTopic = topic;
+  }
 
 
 
@@ -103,24 +138,168 @@ void generateNewString(const struct CipherVector *);
 void displayKey(const struct CipherVector *);
 void displayRawString(const struct CipherVector *);
 void displayReceivedData(byte *, size_t = STRING_SIZE);
-void openDoor(uint8_t = _PIN_RELAY, bool = false, bool = false);
+void openDoor(uint8_t = _PIN_RELAY, bool = false);
 void closeDoor(uint8_t = _PIN_RELAY, bool = false);
+void triggerDoorRelay(uint8_t = _PIN_RELAY, bool = false);
 bool isDoorClosed();
 bool isGarageOccupied();
 bool isTimeout();
 void reset();
 void toggleStatusLed(uint8_t, uint16_t = 5000);
-void messageReceived(String, String);
+void messageReceived(String&, String&);
+
+
+
+
+
+void checkIfSensorsChanged() {
+  isGarageDoorClosed.currentState = isDoorClosed();
+  isGarageDoorOpen.currentState = isDoorOpen();
+  garageOccupancy.currentState = isGarageOccupied();
+  
+
+
+  if(isGarageDoorClosed.lastState != isGarageDoorClosed.currentState) {
+    // State has changed, let's check which way
+    if(!isGarageDoorClosed.currentState) {
+    // Door is opening
+    isGarageDoorClosed.mqttPayload = "opening";
+    client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is opening by changed state"));
+    }
+    else {
+    isGarageDoorClosed.mqttPayload = "closed";
+    }
+
+    isGarageDoorClosed.lastState = isGarageDoorClosed.currentState;
+    if(USE_NETWORK) client.publish(isGarageDoorClosed.mqttStateTopic, isGarageDoorClosed.mqttPayload);
+
+  }
+
+  if(isGarageDoorOpen.lastState != isGarageDoorOpen.currentState) {
+    // State has changed, let's check which way
+    if(!isGarageDoorOpen.currentState) {
+    // Door is closing
+    isGarageDoorOpen.mqttPayload = "closing";
+    client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is closing by changed state"));
+    }
+    else {
+    isGarageDoorOpen.mqttPayload = "open";
+    }
+    isGarageDoorOpen.lastState = isGarageDoorOpen.currentState;
+    if(USE_NETWORK) client.publish(isGarageDoorOpen.mqttStateTopic, isGarageDoorOpen.mqttPayload);
+  }
+
+  if(garageOccupancy.lastState != garageOccupancy.currentState) {
+    // State has changed, let's check which way
+    if(!garageOccupancy.currentState) {
+    // Garage is free
+    garageOccupancy.mqttPayload = "OFF";
+    }
+    else {
+    // Garage is occupied
+    garageOccupancy.mqttPayload = "ON";
+    }
+    garageOccupancy.lastState = garageOccupancy.currentState;
+    if(USE_NETWORK) client.publish(garageOccupancy.mqttStateTopic, garageOccupancy.mqttPayload);
+  }
+}
+
+void checkChangedMqttTopic() {
+  if(changedTopic == garageDoorCommandTopic) {
+      // Change the state of the garage door
+      if(isGarageDoorOpen.currentState) {
+        // Garage is open
+        if(changedTopicPayload == garageDoorCommandPayloadOpen) {
+            // Do nothing, door is already open
+        }
+        else if(changedTopicPayload == garageDoorCommandPayloadClose) {
+            closeDoor();
+        }
+        else if(changedTopicPayload == garageDoorCommandPayloadStop) {
+            // Do nothing, door is open and not in movement
+        }
+        else {
+            // Do nothing, unknown command
+        }
+      }
+      else if(isGarageDoorClosed.currentState) {
+        // Garage is closed
+        if(changedTopicPayload == garageDoorCommandPayloadOpen) {
+            openDoor();
+        }
+        else if(changedTopicPayload == garageDoorCommandPayloadClose) {
+            // Do nothing, door is already closed
+        }
+        else if(changedTopicPayload == garageDoorCommandPayloadStop) {
+            // Do nothing, door is open and not in movement
+        }
+        else {
+            // Do nothing, unknown command
+        }
+      }
+      else {
+      // Door is either closing or opening => in movement
+      // or door is between open and closed => not in movement
+      if(changedTopicPayload == garageDoorCommandPayloadOpen) {
+          // Do nothing, the doors state is unknown
+      }
+      else if(changedTopicPayload == garageDoorCommandPayloadClose) {
+          // Do nothing, the doors state is unknown
+      }
+      else if(changedTopicPayload == garageDoorCommandPayloadStop) {
+          // Assuming the door is between open and closed and it is in movement => stop the movement
+          triggerDoorRelay();
+      }
+      else {
+          // Do nothing, unknown command
+      }
+    }
+  }
+
+  // Reset MQTT commands
+  changedTopic = "";
+  changedTopicPayload = "";
+}
 
 
 void messageReceived(String &topic, String &payload) {
   Serial.println("incoming: " + topic + " - " + payload);
+  changedTopic = topic;
+  changedTopicPayload = payload;
+
 
   // Note: Do not use the client in the callback to publish, subscribe or
   // unsubscribe as it may cause deadlocks when other things arrive while
   // sending and receiving acknowledgments. Instead, change a global variable,
   // or push to a queue and handle it in the loop after calling `client.loop()`.
 }
+
+// void runAction() {
+
+//   if(changedTopic == garageDoorCommandTopic) {
+//     if(changedTopicPayload == garageDoorPayloadOpen) {
+//       if(isDoorClosed()) {
+//         openDoor();
+//       }
+//       //client.publish(F("homeassistant/cover/garage_door/state"), F("opeing"));
+//     }
+//     else if(changedTopicPayload == garageDoorPayloadClose) {
+//       if(!isDoorClosed()) {
+//         closeDoor();
+//       }
+//     }
+//     else if(changedTopicPayload == garageDoorPayloadStop) {
+//       triggerDoorRelay();
+//     }
+//   }
+
+//   // Reset MQTT data
+//   changedTopic = "";
+//   changedTopicPayload = "";
+
+// }
+
+
 
 void toggleStatusLed(uint8_t led, uint16_t duration) {
   uint8_t ledPin;
@@ -318,20 +497,21 @@ bool isTimeout() {
 
 bool isGarageOccupied() {
   Serial.print(F("isGarageOccupied(): "));
-  bool status1 = digitalRead(_PIN_GARAGE_OCCUPATION);
+  // bool status1 = digitalRead(_PIN_GARAGE_OCCUPANCY);
+  bool status1 = _INVERT_GARAGE_OCCUPATION ? !digitalRead(_PIN_GARAGE_OCCUPANCY) : digitalRead(_PIN_GARAGE_OCCUPANCY);
   Serial.println(status1);
 
-  if(status1) {
-    client.publish(F("homeassistant/binary_sensor/garage_occupancy/state"), F("ON"));
-  }
-  else {
-    client.publish(F("homeassistant/binary_sensor/garage_occupancy/state"), F("OFF"));
-  }
+  // if(status1) {
+  //   client.publish(F("homeassistant/binary_sensor/garage_occupancy/state"), F("ON"));
+  // }
+  // else {
+  //   client.publish(F("homeassistant/binary_sensor/garage_occupancy/state"), F("OFF"));
+  // }
 
   
   return status1;
   
-  //bool status = _INVERT_GARAGE_OCCUPATION ? abs(digitalRead(_PIN_GARAGE_OCCUPATION)) : digitalRead(_PIN_GARAGE_OCCUPATION);
+  //bool status = _INVERT_GARAGE_OCCUPATION ? abs(digitalRead(_PIN_GARAGE_OCCUPANCY)) : digitalRead(_PIN_GARAGE_OCCUPANCY);
   bool status = false;
 
   // Since we don't know when the sensor got light for the last time,
@@ -340,7 +520,7 @@ bool isGarageOccupied() {
 
 
   // First meausure the current value of the sensor
-  float value1 = analogRead(_PIN_GARAGE_OCCUPATION);
+  float value1 = analogRead(_PIN_GARAGE_OCCUPANCY);
 
   // Now turn the laser on
   digitalWrite(_PIN_LIGHTBARRIER, !_INVERT_LIGHTBARRIER);
@@ -348,7 +528,7 @@ bool isGarageOccupied() {
   // Give the sensor a second to adapt to the new brightness
   delay(2000);
 
-  float value2 = analogRead(_PIN_GARAGE_OCCUPATION);
+  float value2 = analogRead(_PIN_GARAGE_OCCUPANCY);
 
   // Turn laser off
   digitalWrite(_PIN_LIGHTBARRIER, _INVERT_LIGHTBARRIER);
@@ -389,27 +569,30 @@ bool isGarageOccupied() {
 }
 
 bool isDoorClosed() {
-   Serial.print(F("isDoorClosed(): "));
-  bool status = _INVERT_DOOR_STATUS ? !digitalRead(_PIN_DOOR_CLOSED) : digitalRead(_PIN_DOOR_CLOSED);
-   Serial.println(status);
-  if(status) {
-    client.publish(F("homeassistant/cover/garage_door/state"), F("closed"));
-  }
-  else {
-    client.publish(F("homeassistant/cover/garage_door/state"), F("open"));
-  }
+  Serial.print(F("isDoorClosed(): "));
+  bool status = _INVERT_DOOR_CLOSED_STATUS ? !digitalRead(_PIN_DOOR_CLOSED) : digitalRead(_PIN_DOOR_CLOSED);
+  Serial.println(status);
   return status;
 }
 
-void openDoor(uint8_t relayPin, bool inverted, bool useAsAlias) { // Using as Alias by actually calling closeDoor() 
-  if(!useAsAlias) {
-    Serial.println(F("openDoor()"));
-    client.publish(F("homeassistant/cover/garage_door/state"), F("opening"));
-  }
+bool isDoorOpen() {
+  Serial.print(F("isDoorOpen(): "));
+  bool status = _INVERT_DOOR_OPEN_STATUS ? !digitalRead(_PIN_DOOR_OPEN) : digitalRead(_PIN_DOOR_OPEN);
+  Serial.println(status);
+  return status;
+}
 
+void triggerDoorRelay(uint8_t relayPin, bool inverted)  {
   digitalWrite(relayPin, !inverted);
   delay(1000);
   digitalWrite(relayPin, inverted);
+}
+
+
+void openDoor(uint8_t relayPin, bool inverted) {
+  Serial.println(F("openDoor()"));
+//    client.publish(F("homeassistant/cover/garage_door/state"), F("opening"));
+  triggerDoorRelay(relayPin, inverted);
 
 }
 
@@ -417,8 +600,8 @@ void openDoor(uint8_t relayPin, bool inverted, bool useAsAlias) { // Using as Al
 // Alias of openDoor()
 void closeDoor(uint8_t relayPin, bool inverted) {
   Serial.println(F("closeDoor()"));
-  client.publish(F("homeassistant/cover/garage_door/state"), F("closing"));
-  openDoor(relayPin, inverted, true);
+  // client.publish(F("homeassistant/cover/garage_door/state"), F("closing"));
+  triggerDoorRelay(relayPin, inverted);
 }
 
 void generateNewString(const struct CipherVector *vector) {
@@ -566,7 +749,7 @@ void displayRawString(const struct CipherVector *vector) {
 }
 
 
-
+bool cipherSuccessful = false;
 
 
 void setup() {
@@ -574,19 +757,15 @@ void setup() {
   // Setup Serial
 
   Serial.begin(115200);
-  while (!Serial) {
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(50);
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(50);
-  }
+  while (!Serial) {}
   Serial.println(F("Serial ready"));
   delay(500);
 
 
 
   pinMode(_PIN_DOOR_CLOSED, INPUT_PULLUP);
-  pinMode(_PIN_GARAGE_OCCUPATION, INPUT_PULLUP);
+  pinMode(_PIN_DOOR_OPEN, INPUT_PULLUP);
+  pinMode(_PIN_GARAGE_OCCUPANCY, INPUT_PULLUP);
   pinMode(_PIN_LIGHTBARRIER, OUTPUT);
   pinMode(_PIN_RELAY, OUTPUT);
   pinMode(_PIN_STATUS_ACK, OUTPUT);
@@ -613,69 +792,125 @@ void setup() {
   randomSeed(analogRead(_PIN_UNUSED));
 
   // Setup network
+  if(USE_NETWORK) {
 
-  Serial.println(F("Initialize Ethernet with DHCP:"));
-  if (Ethernet.begin(mac) == 0) {
-    Serial.println(F("Failed to configure Ethernet using DHCP"));
-    // Check for Ethernet hardware present
-    if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-      Serial.println(F("Ethernet shield was not found.  Sorry, can't run without hardware."));
-      while (true) {
-        delay(1); // do nothing, no point running without Ethernet hardware
+    Serial.println(F("Initialize Ethernet with DHCP:"));
+    if (Ethernet.begin(mac) == 0) {
+      Serial.println(F("Failed to configure Ethernet using DHCP"));
+      // Check for Ethernet hardware present
+      if (Ethernet.hardwareStatus() == EthernetNoHardware) {
+        Serial.println(F("Ethernet shield was not found.  Sorry, can't run without hardware."));
+        while (true) {
+          delay(1); // do nothing, no point running without Ethernet hardware
+        }
       }
+      if (Ethernet.linkStatus() == LinkOFF) {
+        Serial.println(F("Ethernet cable is not connected."));
+      }
+      // try to congifure using IP address instead of DHCP:
+      Ethernet.begin(mac, ip, myDns);
+      Serial.println(F("Started Ethernet with manually assigned IP"));
+      
+    } else {
+      Serial.print(F("  DHCP assigned IP "));
+      Serial.println(Ethernet.localIP());
     }
-    if (Ethernet.linkStatus() == LinkOFF) {
-      Serial.println(F("Ethernet cable is not connected."));
+
+    // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
+    // by Arduino. You need to set the IP address directly.
+    client.begin(mqttHostAddress, net);
+    client.onMessage(messageReceived);
+
+    connect();
+    publishConfig();
+    // isGarageDoorClosed.mqttStateTopic = "homeassistant/cover/garage_door/state";
+    // isGarageDoorClosed.mqttStateTopic = "homeassistant/cover/garage_door/state";
+    // isGarageDoorOpen.mqttStateTopic = "homeassistant/cover/garage_door/state";
+    client.subscribe("homeassistant/cover/garage_door/set");
+
+    isGarageDoorClosed.currentState = isDoorClosed();
+    isGarageDoorOpen.currentState = isDoorOpen();
+    garageOccupancy.currentState = isGarageOccupied();
+
+    if(garageOccupancy.currentState) {
+      garageOccupancy.mqttPayload = "ON";
     }
-    // try to congifure using IP address instead of DHCP:
-    Ethernet.begin(mac, ip, myDns);
-    Serial.println(F("Started Ethernet with manually assigned IP"));
-    
-  } else {
-    Serial.print(F("  DHCP assigned IP "));
-    Serial.println(Ethernet.localIP());
-  }
+    else {
+      garageOccupancy.mqttPayload = "OFF";
+    }
 
-  // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
-  // by Arduino. You need to set the IP address directly.
-  client.begin(mqttHostAddress, net);
-  client.onMessage(messageReceived);
+    client.publish(garageOccupancy.mqttStateTopic, garageOccupancy.mqttPayload);
 
-  connect();
-  publishConfig();
-  client.subscribe("homeassistant/cover/garage_door/set");
+
+    if(isGarageDoorOpen.currentState) {
+      // Door is open
+      isGarageDoorOpen.mqttPayload = "open";
+      client.publish(isGarageDoorOpen.mqttStateTopic, isGarageDoorOpen.mqttPayload);
+    }
+    else if(isGarageDoorClosed.currentState) {
+      // Door is closed
+      isGarageDoorClosed.mqttPayload = "closed";
+      client.publish(isGarageDoorClosed.mqttStateTopic, isGarageDoorClosed.mqttPayload);
+    }
+    else {
+      client.publish(isGarageDoorClosed.mqttStateTopic, "Unknown");
+    }
+
 // client.unsubscribe("/hello");
-
+  }
+  else {
+    Serial.println(F("#################################### ! NO NETWORK USAGE ! ####################################"));
+  }
 
   Serial.println(F("I am the stationary device - ready!"));
+  client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Device has finished booting, run loop() now"));
 }
 
-void loop() {
-  client.loop();
 
-  if (!client.connected()) {
-    connect();
+
+void loop() {
+  if(USE_NETWORK) {
+    client.loop();
+
+    if (!client.connected()) {
+      connect();
+    }
   }
 
-  // Check if the door is closed and if no car is in the garage
-  if (isDoorClosed() && !isGarageOccupied()) {
+  // Check if any sensor changed its state
+  checkIfSensorsChanged();
 
-    // 1.   Generate new string
-    generateNewString(&cipherVector);
+  // Check if a recently received MQTT message is relevant for the door control
+  checkChangedMqttTopic();
+
+  // Send generated string
+  // // Handle the RF communication
+  // if(handleCipher(&speckTiny, &cipherVector, KEY_SIZE, false)) cipherSuccessful = true;
+
+
+  // if(cipherSuccessful) {
+
+  // }
+
+
+
+
+  // Check if the door is closed and if no car is in the garage
+  if (isGarageDoorClosed.currentState && !garageOccupancy.currentState) {
+
+
 
     // 2.   Encrypt generated string
-    if (handleCipher(&speckTiny, &cipherVector, KEY_SIZE, false)) {
-      
-      toggleStatusLed(SENDING);
+    if(handleCipher(&speckTiny, &cipherVector, KEY_SIZE, false)) {
 
       // 3.   Send encrypted string and check if there's an ACK
       client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Send encrypted string by RF, wait for ack"));
       if (radio.write(cipherVector.bPlaintext, STRING_SIZE)) {
         sendTime = millis();
         client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Ack successful, wait for answer"));
-         Serial.println(F("# String successfully sent"));
-         Serial.println(F("#"));
-         Serial.println(F(""));
+        Serial.println(F("# String successfully sent"));
+        Serial.println(F("#"));
+        Serial.println(F(""));
 
         // 4.   Wait until receiving a string or until timeout
         radio.setChannel(0);
@@ -707,7 +942,6 @@ void loop() {
           radio.read(&text, len);
           client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Answer received"));
           displayReceivedData(text);
-          toggleStatusLed(ACK);
 
           if (memcmp(&text, cipherVector.bCiphertext, STRING_SIZE) == 0) {
             // Receiver sent back a valid encrypted string
@@ -717,7 +951,7 @@ void loop() {
             openDoor();
             client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Opening door"));
             // Give the door some time to open
-             Serial.println(F("Give the door some time to open"));
+            Serial.println(F("Give the door some time to open"));
             while(isDoorClosed()) {
               delay(10);
             }
@@ -747,16 +981,15 @@ void loop() {
         }
 
       } else {
-        toggleStatusLed(NO_ACK);
         client.publish(F("homeassistant/sensor/garage_current_action/state"), F("No ack"));
-         Serial.println(F("# Error while sending string"));
-         Serial.println(F("#"));
-         Serial.println(F(""));
+        Serial.println(F("# Error while sending string"));
+        Serial.println(F("#"));
+        Serial.println(F(""));
       }
     }
   } else if (!isDoorClosed() && isGarageOccupied()) {
     // Car is in the garage and the door is (already) open
-     Serial.println(F("Waiting for the car to leave the garage"));
+    Serial.println(F("Waiting for the car to leave the garage"));
     client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Wait for the car to leave the garage or the door to be closed manually"));
     while (isGarageOccupied()) {
       // Wait until the car left the garage or until the door is manually closed
