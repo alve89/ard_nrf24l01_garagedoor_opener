@@ -997,7 +997,7 @@ byte currentProcessPhase;
 
 
 
-
+// TODO: Add STOP handler in handleGarage() -> by now MQTT-STOP-command prevents usage of CLOSE or OPEN
 void handleGarage() {
   if( garageOccupancy.state() ) {
     // Garage is occupied => nothing to do
