@@ -134,7 +134,7 @@ unsigned long lastClosedTime    = 0;
 bool lightbarrierStatus = false;
 float lightbarrierValue1 = 0;
 float lightbarrierValue2 = 0;
-
+ 
 unsigned long delayTime = 0;
 
 const byte DFLT     = 0;
