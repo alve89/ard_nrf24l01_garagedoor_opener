@@ -128,6 +128,8 @@ unsigned long lightbarrierDisabledTime = 0;
 unsigned long lastOccupancyTime = 0;
 unsigned long lastOpeningTime   = 0;
 unsigned long lastClosingTime   = 0;
+unsigned long lastOpenedTime    = 0;
+unsigned long lastClosedTime    = 0;
 
 bool lightbarrierStatus = false;
 float lightbarrierValue1 = 0;
@@ -140,8 +142,17 @@ const byte RF       = 1;
 const byte MQTT     = 2;
 const byte SENSORS  = 3;
 const byte BUTTON   = 4;
+const byte ACT_OPEN_DOOR = 1;
+const byte ACT_CLOSE_DOOR = 2;
+const byte ACT_STOP = 3;
+byte triggerType = DFLT;
+byte triggeredAction = DFLT;
+String triggerName = "";
+
 byte openedBy       = DFLT;
 byte closedBy       = DFLT;
+
+bool triggerDetected = false;
 
 
 
@@ -269,6 +280,19 @@ bool handleNewRFCommuncation() {
           answerIsValid = true;
           Serial.println("Strings match!");
           client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Received string is valid"));
+        
+          if( isGarageDoorClosed.state() ) {
+            newTriggerDetected(RF, ACT_OPEN_DOOR);
+          }
+
+          if( isGarageDoorOpen.state() ) {
+            newTriggerDetected(RF, ACT_CLOSE_DOOR);
+          }
+
+          if( !isGarageDoorClosed.state() && isGarageDoorOpen.state() ) {
+            newTriggerDetected(RF, ACT_STOP);
+          }
+
           return true;
         }
         else {
@@ -303,18 +327,18 @@ void checkIfSensorsChanged() {
     if( !isGarageDoorClosed.currentState) {
       // Door is opening
       isGarageDoorClosed.mqttPayload = "opening";
-      client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is opening by changed state"));
+      // client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is opening by changed state"));
       lastOpeningTime = millis();
-      closedBy = DFLT;
-      if( openedBy == DFLT ) {
-        openedBy = SENSORS;
+      // closedBy = DFLT;
+      if( triggerType == DFLT ) {
+        triggerType = SENSORS;
       }
     }
     else {
       isGarageDoorClosed.mqttPayload = "closed";
-      client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is closed by changed state"));
-      lastClosingTime = millis();
-      openedBy = DFLT;
+      // client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is closed by changed state"));
+      lastClosedTime = millis();
+      // openedBy = DFLT;
     }
 
     isGarageDoorClosed.lastState = isGarageDoorClosed.currentState;
@@ -327,18 +351,18 @@ void checkIfSensorsChanged() {
     if( !isGarageDoorOpen.currentState ) {
       // Door is closing
       isGarageDoorOpen.mqttPayload = "closing";
-      client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is closing by changed state"));
+      // client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is closing by changed state"));
       lastClosingTime = millis();
-      openedBy = DFLT;
-      if( closedBy == DFLT ) {
-        closedBy = SENSORS;
+      // openedBy = DFLT;
+      if( triggerType == DFLT ) {
+        triggerType = SENSORS;
       }
     }
     else {
       isGarageDoorOpen.mqttPayload = "open";
-      client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is open by changed state"));
-      lastOpeningTime = millis();
-      closedBy = DFLT;
+      // client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is open by changed state"));
+      lastOpenedTime = millis();
+      // closedBy = DFLT;
     }
     isGarageDoorOpen.lastState = isGarageDoorOpen.currentState;
     if(USE_NETWORK) client.publish(isGarageDoorOpen.mqttStateTopic, isGarageDoorOpen.mqttPayload);
@@ -368,7 +392,10 @@ void checkChangedMqttTopic() {
           // Do nothing, door is already open
         }
         else if(changedTopicPayload == garageDoorCommandPayloadClose) {
-          closedBy = MQTT;
+          // Store information about new trigger
+          newTriggerDetected(MQTT, ACT_CLOSE_DOOR);
+
+//          closedBy = MQTT;
         }
         else if(changedTopicPayload == garageDoorCommandPayloadStop) {
           // Do nothing, door is open and not in movement
@@ -381,7 +408,9 @@ void checkChangedMqttTopic() {
         // Garage is closed
         if( changedTopicPayload == garageDoorCommandPayloadOpen ) {
             // openDoor();
-            openedBy = MQTT;
+//            openedBy = MQTT;
+          // Store information about new trigger
+          newTriggerDetected(MQTT, ACT_OPEN_DOOR);
         }
         else if(changedTopicPayload == garageDoorCommandPayloadClose) {
             // Do nothing, door is already closed
@@ -405,7 +434,9 @@ void checkChangedMqttTopic() {
       else if(changedTopicPayload == garageDoorCommandPayloadStop) {
           // Assuming (!) the door is between open and closed and it is in movement => stop the movement
           if( !isGarageDoorOpen.state() && !isGarageDoorClosed.state() ) {
-            triggerDoorRelay();
+            // Store information about new trigger
+            newTriggerDetected(MQTT, ACT_STOP);
+//            triggerDoorRelay();
           }
       }
       else {
@@ -844,17 +875,30 @@ void displayRawString(const struct CipherVector *vector) {
    Serial.println();
 }
 
+void newTriggerDetected(byte type, byte action) {
+  triggerDetected = true;
+  triggerType = type;
+  triggeredAction = action;
+}
+
 void isr() {
+
+
+  Serial.print(F("Button pushed - "));
+
   if( isGarageDoorClosed.state() ) {
-    Serial.println(F("Button pushed - set 'openedBy to 'BUTTON'"));
-    openedBy = BUTTON;
-    return;
+    Serial.println(F("open door"));
+    newTriggerDetected(BUTTON, ACT_OPEN_DOOR);
   }
   
   if( isGarageDoorOpen.state() ) {
-    Serial.println(F("Button pushed - set 'closedBy to 'BUTTON'"));
-    closedBy = BUTTON;
-    return;
+    Serial.println(F("close door"));
+    newTriggerDetected(BUTTON, ACT_CLOSE_DOOR);
+  }
+
+  if( !isGarageDoorClosed.state() && !isGarageDoorOpen.state() ) {
+    Serial.println(F("stop door"));
+    newTriggerDetected(BUTTON, ACT_STOP);
   }
 
 }
@@ -877,7 +921,7 @@ void setup() {
   pinMode(_PIN_ENABLE_TESTING, INPUT_PULLUP);
   pinMode(_PIN_DISABLE_NETWORK, INPUT_PULLUP);
   pinMode(_PIN_BUTTON_HW, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(_PIN_BUTTON_HW), isr,LOW);
+  attachInterrupt(digitalPinToInterrupt(_PIN_BUTTON_HW), isr, LOW);
   pinMode(_PIN_LIGHTBARRIER, OUTPUT);
   pinMode(_PIN_RELAY, OUTPUT);
   pinMode(_PIN_STATUS_ACK, OUTPUT);
@@ -995,6 +1039,42 @@ byte currentProcessPhase;
 //    back to 0
 
 
+String getTriggerName(byte type) {
+  String triggerName;
+
+  switch( type ) {
+    case BUTTON:
+      triggerName = "BUTTON";
+      break;
+
+    case MQTT:
+      triggerName = "MQTT";
+      break;
+    
+    case RF:
+      triggerName = "RF";
+      break;
+
+    default:
+      triggerName = "changed sensor state";
+      break;
+
+  }
+  
+  return triggerName;
+
+}
+
+void resetDetectedTrigger() {
+  triggerDetected = false;
+  triggeredAction = DFLT;
+//  triggerType = DFLT;
+}
+
+bool newTriggerExists() {
+  return triggerDetected;
+}
+
 
 
 // TODO Add MQTT-STOP-handler
@@ -1009,6 +1089,8 @@ void handleGarage() {
 
 
 
+
+
   if( !isGarageDoorOpen.state() ) {
     // Door is not open
     Serial.println(F("Door is not open")); delay(delayTime);
@@ -1016,33 +1098,37 @@ void handleGarage() {
     if( isGarageDoorClosed.state() ) {
       // Door is closed
       Serial.println(F("Door is closed")); delay(delayTime);
-      
-      if( openedBy == BUTTON 
-       || openedBy == MQTT 
-       || openedBy == RF 
-       || openedBy == SENSORS ) {
-              
-        Serial.print(F("openedBy: ")); Serial.println(openedBy);
 
-        // Trigger the relay
-        openDoor();
+      if( newTriggerExists() ) {
+        // The door got a trigger from any of the available channels (RF / MQTT / BUTTON)
 
-        // Wait until the door started movement
-        while( isDoorClosed() ) {
-          delay(10); // Give the door some time to start the movement
-        } 
+        if( triggeredAction = ACT_OPEN_DOOR ) {
+          // Open the door now
 
-        delay(100);
-        checkIfSensorsChanged();
+          // Trigger the relay
+          openDoor();
 
-        return;
+          // Wait until the door started movement
+          while( isDoorClosed() ) {
+            delay(10); // Give the door some time to start the movement
+          } 
+
+          delay(100);
+          checkIfSensorsChanged();
+        
+          client.publish(F("homeassistant/sensor/garage_current_action"), "The door was opened by " + getTriggerName(triggerType) );
+
+          // Reset the trigger information
+          resetDetectedTrigger();
+
+          return;
+        }
       }
 
 
-
-      if( openedBy == DFLT
+      if( !newTriggerExists()
       && !garageOccupancy.state() 
-      && (millis() - lastClosingTime > (RF_AREA_CLEARING_TIME*1000)) ) {
+      && (millis() - lastClosingTime > (RF_AREA_CLEARING_TIME*1000)) ) { // TODO Replace lastClosingTime by lastClosedTime
         // Car is far enough away that sending RF strings will not result in an accidentally opened door => generate and send string
         Serial.println(F("Car is far enough away for the next RF string")); delay(delayTime);
 
@@ -1053,9 +1139,6 @@ void handleGarage() {
           if( handleNewRFCommuncation() ) {
             // RF communication was successfull
             Serial.println(F("RF communication was successfull")); delay(delayTime);
-
-            openedBy = RF;
-
             return;
           }
         }
@@ -1063,6 +1146,16 @@ void handleGarage() {
     }
     else {
       // Door is not closed anymore but still not fully opened => do nothing (until door is fully opened)
+      if( newTriggerExists() ) {
+        if( triggeredAction == ACT_STOP ) {
+          triggerDoorRelay();
+          
+          client.publish(F("homeassistant/sensor/garage_current_action"), "The door was stopped by " + getTriggerName(triggerType) );
+
+          // Reset the trigger information
+          resetDetectedTrigger();
+        }
+      }
     }
   }
   else {
@@ -1073,36 +1166,40 @@ void handleGarage() {
       // or the garage was opened by button (car inside or not)
       // or the garage was opened by MQTT (car inside or not)
 
-    if( closedBy == BUTTON 
-      || closedBy == MQTT
-      || closedBy == SENSORS ) {
-            
-      Serial.print(F("closedBy: ")); Serial.println(closedBy); delay(delayTime);
-      client.publish(F("homeassistant/sensor/garage_current_action"), F("Door closed by button/mqtt/sensors"));
+    if( newTriggerExists() ) {
+      if( triggeredAction == ACT_CLOSE_DOOR ) {
 
-      // Trigger the relay
-      closeDoor();
+        // Trigger the relay
+        closeDoor();
 
-      // Wait until the door started movement
-      while( isDoorOpen() ) {
-        delay(10); // Give the door some time to start the movement
-      } 
+        // Wait until the door started movement
+        while( isDoorOpen() ) {
+          delay(10); // Give the door some time to start the movement
+        } 
 
-      delay(100);
-      checkIfSensorsChanged();
+        delay(100);
+        checkIfSensorsChanged();
 
-      return;
+        client.publish(F("homeassistant/sensor/garage_current_action"), "The door was closed by " + getTriggerName(triggerType) );
+
+        // Reset the trigger information
+        resetDetectedTrigger();
+
+        return;
+      }
     }
 
 
-    if( !garageOccupancy.state() ) {
+    if( !garageOccupancy.state() ) { // and garage is still OPEN
       // Garage is not occupied
       // Wasn't the car in the garage before
       // or did the car just leave the garage?
 
-      if( openedBy == RF ) {
+
+
+      if( triggerType == RF ) {
         // Garage was opened by RF => the car wasn't in the garage before
-        if( millis() - lastOpeningTime > (DOOR_AREA_CLEARING_TIME*1000) ) {
+        if( millis() - lastOpeningTime > (DOOR_AREA_CLEARING_TIME*1000) ) { // TODO Replace lastOpeningTime by lastOpenedTime
           // No car appeared in configured time => close door again
           Serial.println(F("No car appeared")); delay(delayTime);
           client.publish(F("homeassistant/sensor/garage_current_action"), F("No car appeared after opening door by RF"));
@@ -1172,8 +1269,6 @@ void loop() {
   // Check if a recently received MQTT message is relevant for the door control
   checkChangedMqttTopic();
 
-  // Run routine to check the sensors states
-  //handleGarageSensors();
-
+  // Handle the sensor/actor controlling
   handleGarage();  
 }
