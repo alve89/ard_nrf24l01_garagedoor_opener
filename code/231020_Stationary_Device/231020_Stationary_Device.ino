@@ -1,68 +1,61 @@
-#include <Arduino.h>
-#include <SPI.h>
-#include <nRF24L01.h>
-#include <RF24.h>
-#include <SHA256.h>
-#include <CryptoCstm.h>
-#include <SpeckTiny.h>
-#include <string.h>
-#include <Ethernet.h>
-#include <MQTT.h>
-// #include <Base64.h>
-// #include <garageOpenerLib.h>
-
-class sensor {
-  public:
-    sensor();
-    sensor(String);
-    bool hasStateChanged();
-    bool state();
-    bool lastState = false;
-    bool currentState = false;
-
-    String mqttStateTopic;
-    String mqttPayload;
-};
-
-sensor::sensor() {}
-
-sensor::sensor(String topic) {
-    mqttStateTopic = topic;
-}
-bool sensor::state() {
-  return currentState;
-}
+#include "garagecontrol.h"
 
 
-
-bool USE_NETWORK                      = true;
-bool TESTING_ONLY                     = false;
-//byte RADIO_ADDRESS[6] = {0x30, 0x30, 0x30, 0x30, 0x31}; // 00001
-const byte RADIO_ADDRESS[6]           = "00001";
-uint8_t RADIO_READINGPIPE             = 0;
-uint8_t RADIO_CHANNEL                 = 0;
-bool RADIO_DYNAMIC_PAYLOAD_SIZE       = false;
+//byte CONFIG.RF.address[6] = {0x30, 0x30, 0x30, 0x30, 0x31}; // 00001
+// const byte RADIO_ADDRESS[6]           = "00001";
+// uint8_t CONFIG.RF.readingPipe             = 0;
+// uint8_t RADIO_CHANNEL                 = 0;
+// bool RADIO_DYNAMIC_PAYLOAD_SIZE       = false;
 const size_t KEY_SIZE                 = 32;
 const size_t STRING_SIZE              = 16;
 
 
-const uint8_t _PIN_GARAGE_OCCUPANCY   = A1;
 
-const uint8_t _PIN_DOOR_CLOSED        = 11;
-const uint8_t _PIN_LIGHTBARRIER       = 9;
-const uint8_t _PIN_RF_CSN             = 8;
-const uint8_t _PIN_RF_CE              = 7;
-const uint8_t _PIN_DOOR_OPEN          = 6;
-const uint8_t _PIN_RELAY              = 5;
-const uint8_t _PIN_BUTTON_HW          = 21;
-const uint8_t _PIN_KEY_HW             = 20;
-const uint8_t _PIN_ENABLE_TESTING     = 3;
-const uint8_t _PIN_DISABLE_NETWORK    = 2;
+// CONFIG.newPin("garageOccupancy", A1, false);
+// CONFIG.newPin("laser", 9, false);
+// CONFIG.newPin("doorClosed", 11, true);
+// CONFIG.newPin("doorOpen", 6, true);
+// CONFIG.newPin("relay", 5, false);
+// CONFIG.newPin("button", 21, true);
+// CONFIG.newPin("key", 20, true);
+// CONFIG.newPin("enableTesting", 3, true);
+// CONFIG.newPin("disableNetwork", A1, true);
+// CONFIG.newPin("ledNoAck", A5, false);
+// CONFIG.newPin("ledAck", A5, false);
+// CONFIG.newPin("ledSending", A5, false);
+// CONFIG.newPin("unused", A0, false);
+// CONFIG.RF.getCSNPin();
+// CONFIG.RF.getCEPin();
 
-const uint8_t _PIN_STATUS_NO_ACK      = A5;
-const uint8_t _PIN_STATUS_ACK         = A5;
-const uint8_t _PIN_STATUS_SENDING     = A5;
-const uint8_t _PIN_UNUSED             = A0;  // For random seed
+
+// const bool _INVERT_GARAGE_OCCUPATION  = false;
+// const bool _INVERT_DOOR_OPEN_STATUS   = true;
+// const bool _INVERT_DOOR_CLOSED_STATUS = true;
+// const bool _INVERT_ENABLE_TESTING     = true;
+// const bool _INVERT_DISABLE_NETWORK    = true;
+// const bool _INVERT_LIGHTBARRIER       = false;
+// const bool _INVERT_BUTTON_HW          = true;
+// const bool _INVERT_KEY_HW             = true;
+
+
+
+
+// const uint8_t _PIN_GARAGE_OCCUPANCY   = A1;
+// const uint8_t _PIN_DOOR_CLOSED        = 11;
+// const uint8_t _PIN_LIGHTBARRIER       = 9;
+// const uint8_t _PIN_RF_CSN             = 8;
+// const uint8_t _PIN_RF_CE              = 7;
+// const uint8_t _PIN_DOOR_OPEN          = 6;
+// const uint8_t _PIN_RELAY              = 5;
+// const uint8_t _PIN_BUTTON_HW          = 21;
+// const uint8_t _PIN_KEY_HW             = 20;
+// const uint8_t _PIN_ENABLE_TESTING     = 3;
+// const uint8_t _PIN_DISABLE_NETWORK    = 2;
+
+// const uint8_t _PIN_STATUS_NO_ACK      = A5;
+// const uint8_t _PIN_STATUS_ACK         = A5;
+// const uint8_t _PIN_STATUS_SENDING     = A5;
+// const uint8_t _PIN_UNUSED             = A0;  // For random seed
 
 
 const uint16_t _STATUS_SENDING_LED_DURAT  = 1000;
@@ -70,30 +63,22 @@ const uint16_t _STATUS_NO_ACK_LED_DURAT  = 1000;
 const uint16_t _STATUS_ACK_LED_DURAT  = 1000;
 
 
-const uint16_t MAX_MQTT_PAYLOAD_SIZE  = 1024;
-const bool _INVERT_GARAGE_OCCUPATION  = false;
-const bool _INVERT_DOOR_OPEN_STATUS   = true;
-const bool _INVERT_DOOR_CLOSED_STATUS = true;
-const bool _INVERT_ENABLE_TESTING     = true;
-const bool _INVERT_DISABLE_NETWORK    = true;
-const bool _INVERT_LIGHTBARRIER       = false;
-const bool _INVERT_BUTTON_HW          = true;
-const uint8_t MAX_RECEIVE_ATTEMPTS    = 10;
-const uint8_t MAX_WAIT_DURATION_SEC   = 10;
-const uint16_t TIMEOUT                = 3000; // milliseconds => time between sending the string and marking this try as failure because of no answer
-const uint8_t WAIT_FOR_NEXT_RF_SENDING= 5;  // seconds
-const uint8_t DOOR_AREA_CLEARING_TIME = 25;  // seconds
-const uint8_t RF_AREA_CLEARING_TIME   = 30;  // seconds
-const float LDR_TOLERANCE             = 30; // integer, will be transformed to percentage
-const uint16_t LDR_TRESHOLD           = 600; // value of analoagRead()
+
+
+// const uint16_t TIMEOUT                = 3000; 
+// const uint8_t WAIT_FOR_NEXT_RF_SENDING= 5;  // seconds
+// const uint8_t DOOR_AREA_CLEARING_TIME = 25;  // seconds
+// const uint8_t RF_AREA_CLEARING_TIME   = 30;  // seconds
+// const float LDR_TOLERANCE             = 30; // integer, will be transformed to percentage
+// const uint16_t LDR_TRESHOLD           = 600; // value of analoagRead()
 
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 byte ip[] = {192, 168, 20, 177};  // <- change to match your network
 IPAddress myDns(192, 168, 20, 1);
-const char mqttHostAddress[] = "homecontrol.lan.k4";
-const char mqttUser[] = "test";
-const char mqttPwd[] = "qoibOIBbfoqib38bqucv3u89qv";
-const char mqttClientId[] = "garage_sensors";
+// char mqttHostAddress[] = "homecontrol.lan.k4";
+// const char mqttUser[] = "test";
+// const char mqttPwd[] = "qoibOIBbfoqib38bqucv3u89qv";
+// const char mqttClientId[] = "garage_sensors";
 
 sensor isGarageDoorClosed((String) "homeassistant/cover/garage_door/state");
 sensor isGarageDoorOpen((String) "homeassistant/cover/garage_door/state");
@@ -103,8 +88,6 @@ sensor garageOccupancy((String) "homeassistant/binary_sensor/garage_occupancy/st
 
 
 
-EthernetClient net;
-MQTTClient client(MAX_MQTT_PAYLOAD_SIZE);
 
 
 
@@ -134,12 +117,12 @@ static CipherVector cipherVector = {
 
 
 SpeckTiny speckTiny;
-RF24 radio(_PIN_RF_CE, _PIN_RF_CSN);  // CE, CSN
+RF24 radio(CONFIG.getPinByName("rf_ce")->getNumber(), CONFIG.getPinByName("rf_csn")->getNumber());  // CE, CSN
 
 byte BUFFER[STRING_SIZE];
 const char letters[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 unsigned long sendTime = 0;
-unsigned long timerForLeavingCar = 0; // This variable is used to be checked against the DOOR_AREA_CLEARING_TIME
+unsigned long timerForLeavingCar = 0; // This variable is used to be checked against the CONFIG.doorAreaClearingTime
 unsigned long lightbarrierEnabledTime = 0;
 unsigned long lightbarrierDisabledTime = 0;
 
@@ -202,9 +185,9 @@ void generateNewString(const struct CipherVector *);
 void displayKey(const struct CipherVector *);
 void displayRawString(const struct CipherVector *);
 void displayReceivedData(byte *, size_t = STRING_SIZE);
-void openDoor(uint8_t = _PIN_RELAY, bool = false);
-void closeDoor(uint8_t = _PIN_RELAY, bool = false);
-void triggerDoorRelay(uint8_t = _PIN_RELAY, bool = false);
+void openDoor(uint8_t = CONFIG.getPinByName("relay")->getNumber(), bool = false);
+void closeDoor(uint8_t = CONFIG.getPinByName("relay")->getNumber(), bool = false);
+void triggerDoorRelay(uint8_t = CONFIG.getPinByName("relay")->getNumber(), bool = false);
 bool isDoorClosed();
 bool isGarageOccupied();
 bool isTimeout();
@@ -220,9 +203,9 @@ void checkConfig();
 
 void checkConfig() {
   Serial.print(F("checkConfig(): "));
-  TESTING_ONLY = _INVERT_ENABLE_TESTING ? !digitalRead(_PIN_ENABLE_TESTING) : digitalRead(_PIN_ENABLE_TESTING);
-  USE_NETWORK = _INVERT_DISABLE_NETWORK ? !digitalRead(_PIN_DISABLE_NETWORK) : digitalRead(_PIN_DISABLE_NETWORK);
-  Serial.print(F("TESTING_ONLY:")); Serial.print(TESTING_ONLY); Serial.print(F(" / ")); Serial.print(F("USE_NETWORK: ")); Serial.println(USE_NETWORK);
+  CONFIG.testing_only = CONFIG.getPinByName("enableTesting")->isInverted() ? !digitalRead(CONFIG.getPinByName("enableTesting")->getNumber()) : digitalRead(CONFIG.getPinByName("enableTesting")->getNumber());
+  CONFIG.use_network = CONFIG.getPinByName("disableNetwork")->isInverted() ? !digitalRead(CONFIG.getPinByName("disableNetwork")->getNumber()) : digitalRead(CONFIG.getPinByName("disableNetwork")->getNumber());
+  Serial.print(F("CONFIG.testing_only:")); Serial.print(CONFIG.testing_only); Serial.print(F(" / ")); Serial.print(F("CONFIG.use_network: ")); Serial.println(CONFIG.use_network);
   delay(2000);
 }
 
@@ -254,9 +237,9 @@ bool handleNewRFCommuncation() {
     if(ackReceived) {
       // 4.   Wait until receiving a string or until timeout
       radio.setChannel(0);
-      radio.openReadingPipe(RADIO_READINGPIPE, RADIO_ADDRESS);
+      radio.openReadingPipe(CONFIG.RF.readingPipe, CONFIG.RF.address);
       radio.startListening();
-      if (RADIO_DYNAMIC_PAYLOAD_SIZE) {
+      if (CONFIG.RF.dynamicPayloadSize) {
         radio.enableDynamicPayloads();
       }
       else {
@@ -276,12 +259,12 @@ bool handleNewRFCommuncation() {
         delay(1);
       }
 
-      byte len = RADIO_DYNAMIC_PAYLOAD_SIZE ? radio.getDynamicPayloadSize() : STRING_SIZE;
+      byte len = CONFIG.RF.dynamicPayloadSize ? radio.getDynamicPayloadSize() : STRING_SIZE;
       byte text[STRING_SIZE] = "";
       
       if (radio.available()) {
         answerReceived = true;
-        // byte len = RADIO_DYNAMIC_PAYLOAD_SIZE ? radio.getDynamicPayloadSize() : STRING_SIZE;
+        // byte len = CONFIG.RF.dynamicPayloadSize ? radio.getDynamicPayloadSize() : STRING_SIZE;
         // byte text[STRING_SIZE] = "";
         radio.read(&text, len);
         client.publish(garageDoorLogTopic, F("Answer received"));
@@ -345,7 +328,7 @@ void checkIfSensorsChanged() {
     }
 
     isGarageDoorClosed.lastState = isGarageDoorClosed.currentState;
-    if(USE_NETWORK) client.publish(isGarageDoorClosed.mqttStateTopic, isGarageDoorClosed.mqttPayload);
+    if(CONFIG.use_network) client.publish(isGarageDoorClosed.mqttStateTopic, isGarageDoorClosed.mqttPayload);
 
   }
 
@@ -368,7 +351,7 @@ void checkIfSensorsChanged() {
       // closedBy = DFLT;
     }
     isGarageDoorOpen.lastState = isGarageDoorOpen.currentState;
-    if(USE_NETWORK) client.publish(isGarageDoorOpen.mqttStateTopic, isGarageDoorOpen.mqttPayload);
+    if(CONFIG.use_network) client.publish(isGarageDoorOpen.mqttStateTopic, isGarageDoorOpen.mqttPayload);
   }
 
   if(garageOccupancy.lastState != garageOccupancy.currentState) {
@@ -382,7 +365,7 @@ void checkIfSensorsChanged() {
     garageOccupancy.mqttPayload = "ON";
     }
     garageOccupancy.lastState = garageOccupancy.currentState;
-    if(USE_NETWORK) client.publish(garageOccupancy.mqttStateTopic, garageOccupancy.mqttPayload);
+    if(CONFIG.use_network) client.publish(garageOccupancy.mqttStateTopic, garageOccupancy.mqttPayload);
   }
 }
 
@@ -470,15 +453,15 @@ void toggleStatusLed(uint8_t led, uint16_t duration) {
   uint16_t ledDuration;
  switch(led) {
     case SENDING:
-      ledPin = _PIN_STATUS_SENDING;
+      ledPin = CONFIG.getPinByName("ledSending")->getNumber();
       ledDuration = _STATUS_SENDING_LED_DURAT;
       break;
     case ACK:
-      ledPin = _PIN_STATUS_ACK;
+      ledPin = CONFIG.getPinByName("ledAck")->getNumber();
       ledDuration = _STATUS_ACK_LED_DURAT;
       break;
     case NO_ACK:
-      ledPin = _PIN_STATUS_NO_ACK;
+      ledPin = CONFIG.getPinByName("ledNoAck")->getNumber();
       ledDuration = _STATUS_NO_ACK_LED_DURAT;
       break;
     default:
@@ -578,8 +561,8 @@ void publishConfig() {
 }
 
 void connect() {
-   Serial.print(F("connecting..."));
-  while (!client.connect(mqttClientId, mqttUser, mqttPwd)) {
+  //  Serial.print(F("connecting..."));
+   while (!client.connect(CONFIG.MQTT.getClientId(), CONFIG.MQTT.getUser(), CONFIG.MQTT.getPwd())) {
      Serial.print(".");
     delay(1000);
   }
@@ -611,10 +594,10 @@ void resetRF() {
    * Default: 76 => Frequency = 2476 MHz
    * use getChannel to query the channel
    */
-  radio.setChannel(RADIO_CHANNEL);
+  radio.setChannel(CONFIG.RF.channel);
 
 
-  radio.openWritingPipe(RADIO_ADDRESS);  // set the address
+  radio.openWritingPipe(CONFIG.RF.address);  // set the address
   
   
   radio.stopListening();                 // set as transmitter
@@ -642,7 +625,7 @@ void resetRF() {
    * same on both the transmitter (TX) and receiver (RX)side. Alternatively, you can use 
    * dynamic payloads, which need to be enabled on RX and TX. 
    */
-  if (RADIO_DYNAMIC_PAYLOAD_SIZE) {
+  if (CONFIG.RF.dynamicPayloadSize) {
     radio.enableDynamicPayloads();
   } else {
     radio.setPayloadSize(STRING_SIZE);
@@ -650,15 +633,15 @@ void resetRF() {
 }
 
 bool isTimeout() {
-  return (millis() - sendTime > TIMEOUT) ? true : false;
+  return (millis() - sendTime > CONFIG.RF.getTimeout()) ? true : false;
 }
 
 bool isGarageOccupied() {
   bool status = false;
 
-  if(TESTING_ONLY) {
+  if(CONFIG.testing_only) {
     Serial.print(F("isGarageOccupied_testing(): "));
-     status = _INVERT_GARAGE_OCCUPATION ? !digitalRead(_PIN_GARAGE_OCCUPANCY) : digitalRead(_PIN_GARAGE_OCCUPANCY);
+     status = CONFIG.getPinByName("garageOccupancy")->isInverted() ? !digitalRead(CONFIG.getPinByName("garageOccupancy")->getNumber()) : digitalRead(CONFIG.getPinByName("garageOccupancy")->getNumber());
     Serial.println(status);
     return status;
   }
@@ -674,11 +657,11 @@ bool isGarageOccupied() {
 
   if( !lightbarrierStatus ) {
     // First measurement when the laser is off
-    lightbarrierValue1 = analogRead(_PIN_GARAGE_OCCUPANCY);
+    lightbarrierValue1 = analogRead(CONFIG.getPinByName("garageOccupancy")->getNumber());
     delay(10);
 
     // Now turn the laser on
-    digitalWrite(_PIN_LIGHTBARRIER, !_INVERT_LIGHTBARRIER);
+    digitalWrite(CONFIG.getPinByName("laser")->getNumber(), !CONFIG.getPinByName("laser")->isInverted());
     lightbarrierEnabledTime = millis();
     lightbarrierStatus = true;
   }
@@ -691,18 +674,18 @@ bool isGarageOccupied() {
     return garageOccupancy.state();
   }
 
-  lightbarrierValue2 = analogRead(_PIN_GARAGE_OCCUPANCY);
+  lightbarrierValue2 = analogRead(CONFIG.getPinByName("garageOccupancy")->getNumber());
 
   // Turn laser off
-  digitalWrite(_PIN_LIGHTBARRIER, _INVERT_LIGHTBARRIER);
+  digitalWrite(CONFIG.getPinByName("laser")->getNumber(), CONFIG.getPinByName("laser")->isInverted());
   lightbarrierDisabledTime = millis();
   lightbarrierStatus = false;
   
   //  Serial.print("lightbarrierValue2 (");  Serial.print(lightbarrierValue2);  Serial.print(") >= lightbarrierValue1 (");  Serial.print(lightbarrierValue1);  Serial.print(") x 0.8 ("); Serial.print(lightbarrierValue1*0.8); Serial.print("): ");  Serial.println((lightbarrierValue2 >= (lightbarrierValue1 * 0.8)));
   //  Serial.print("lightbarrierValue2 (");  Serial.print(lightbarrierValue2);  Serial.print(") <= lightbarrierValue1 (");  Serial.print(lightbarrierValue1);  Serial.print(") x 1.2 ("); Serial.print(lightbarrierValue1*1.2); Serial.print("): ");  Serial.println((lightbarrierValue2 <= (lightbarrierValue1 * 1.2)));
 
-  float bottomLimit = lightbarrierValue1 * (1 - LDR_TOLERANCE/100);
-  float topLimit = lightbarrierValue1 * (1 + LDR_TOLERANCE/100);
+  float bottomLimit = lightbarrierValue1 * (1 - CONFIG.ldrTolerance/100);
+  float topLimit = lightbarrierValue1 * (1 + CONFIG.ldrTolerance/100);
 
   // Compare both values
   if( (lightbarrierValue2 >= bottomLimit)
@@ -730,7 +713,7 @@ bool isGarageOccupied() {
 
 bool isDoorClosed() {
   Serial.print(F("isDoorClosed(): "));
-  bool status = _INVERT_DOOR_CLOSED_STATUS ? !digitalRead(_PIN_DOOR_CLOSED) : digitalRead(_PIN_DOOR_CLOSED);
+  bool status = CONFIG.getPinByName("doorClosed")->isInverted() ? !digitalRead(CONFIG.getPinByName("doorClosed")->getNumber()) : digitalRead(CONFIG.getPinByName("doorClosed")->getNumber());
   Serial.println(status);
 
   return status;
@@ -738,7 +721,7 @@ bool isDoorClosed() {
 
 bool isDoorOpen() {
   Serial.print(F("isDoorOpen(): "));
-  bool status = _INVERT_DOOR_OPEN_STATUS ? !digitalRead(_PIN_DOOR_OPEN) : digitalRead(_PIN_DOOR_OPEN);
+  bool status = CONFIG.getPinByName("doorOpen")->isInverted() ? !digitalRead(CONFIG.getPinByName("doorOpen")->getNumber()) : digitalRead(CONFIG.getPinByName("doorOpen")->getNumber());
   Serial.println(status);
 
   return status;
@@ -912,8 +895,8 @@ void newTriggerDetected(byte type, byte action) {
 
 void isrButton() {
 
-  if( USE_NETWORK ) {
-    bool status = _INVERT_BUTTON_HW ? !digitalRead(_PIN_BUTTON_HW) : digitalRead(_PIN_BUTTON_HW);
+  if( CONFIG.use_network ) {
+    bool status = CONFIG.getPinByName("button")->isInverted() ? !digitalRead(CONFIG.getPinByName("button")->getNumber()) : digitalRead(CONFIG.getPinByName("button")->getNumber());
     String state = status ? "ON" : "OFF";
     client.publish(garageButtonLogTopic, state);
   }
@@ -936,10 +919,10 @@ void isrButton() {
 }
 
 void isrKey() {
-  if( USE_NETWORK ) {
-    bool status = _INVERT_BUTTON_HW ? !digitalRead(_PIN_BUTTON_HW) : digitalRead(_PIN_BUTTON_HW);
+  if( CONFIG.use_network ) {
+    bool status = CONFIG.getPinByName("key")->isInverted() ? !digitalRead(CONFIG.getPinByName("key")->getNumber()) : digitalRead(CONFIG.getPinByName("key")->getNumber());
     String state = status ? "ON" : "OFF";
-    client.publish(garageButtonLogTopic, state);
+    client.publish(garageKeyLogTopic, state);
   }
 
   return; // TODO Remove when fixed the key electronic
@@ -1057,11 +1040,11 @@ void handleGarage() {
       // Door is closed
       if( !newTriggerExists()
       && !garageOccupancy.state() 
-      && (millis() - lastClosedTime > (RF_AREA_CLEARING_TIME*1000)) ) {
+      && (millis() - lastClosedTime > (CONFIG.RFAreaClearingTime*1000)) ) {
         // Car is far enough away that sending RF strings will not result in an accidentally opened door => generate and send string
         Serial.println(F("Car is far enough away for the next RF string")); delay(delayTime);
 
-        if( millis() - sendTime > (WAIT_FOR_NEXT_RF_SENDING*1000) ) {
+        if( millis() - sendTime > (CONFIG.RF.waitForNextRFSending*1000) ) {
           // Last sending was a few seconds before, try again
           Serial.println(F("Last sending was a few seconds before, try again")); delay(delayTime);
 
@@ -1133,7 +1116,7 @@ void handleGarage() {
       if( triggerType == RF ) {
         // Garage was opened by RF => the car wasn't in the garage before
 
-        if( millis() - lastOpenedTime > (DOOR_AREA_CLEARING_TIME*1000) ) {
+        if( millis() - lastOpenedTime > (CONFIG.doorAreaClearingTime*1000) ) {
           // No car appeared in configured time => close door again
 
           Serial.println(F("No car appeared")); delay(delayTime);
@@ -1155,8 +1138,8 @@ void handleGarage() {
       } // ! garageOccupancy.state()
       else {
         // Door was opened on another way than RF
-        if( millis() - lastOccupancyTime >= (DOOR_AREA_CLEARING_TIME*1000) 
-         && millis() - lastOccupancyTime <= (RF_AREA_CLEARING_TIME*1000) ) {
+        if( millis() - lastOccupancyTime >= (CONFIG.doorAreaClearingTime*1000) 
+         && millis() - lastOccupancyTime <= (CONFIG.RFAreaClearingTime*1000) ) {
           // Car just left the garage
 
           Serial.println(F("Car just left the garage")); delay(delayTime);
@@ -1181,6 +1164,13 @@ void handleGarage() {
 }
 
 void setup() {
+
+
+CONFIG.MQTT.maxPayloadSize  = 1024;
+
+
+
+
   // put your setup code here, to run once:
   // Setup Serial
 
@@ -1191,13 +1181,13 @@ void setup() {
 
 
 
-  pinMode(_PIN_DOOR_CLOSED, INPUT_PULLUP);
-  pinMode(_PIN_DOOR_OPEN, INPUT_PULLUP);
-  pinMode(_PIN_GARAGE_OCCUPANCY, INPUT_PULLUP);
-  pinMode(_PIN_ENABLE_TESTING, INPUT_PULLUP);
-  pinMode(_PIN_DISABLE_NETWORK, INPUT_PULLUP);
-  pinMode(_PIN_BUTTON_HW, INPUT_PULLUP);
-  pinMode(_PIN_KEY_HW, INPUT_PULLUP);
+  pinMode(CONFIG.getPinByName("doorClosed")->getNumber(), INPUT_PULLUP);
+  pinMode(CONFIG.getPinByName("doorOpen")->getNumber(), INPUT_PULLUP);
+  pinMode(CONFIG.getPinByName("garageOccupancy")->getNumber(), INPUT_PULLUP);
+  pinMode(CONFIG.getPinByName("enableTesting")->getNumber(), INPUT_PULLUP);
+  pinMode(CONFIG.getPinByName("disableNetwork")->getNumber(), INPUT_PULLUP);
+  pinMode(CONFIG.getPinByName("button")->getNumber(), INPUT_PULLUP);
+  pinMode(CONFIG.getPinByName("key")->getNumber(), INPUT_PULLUP);
   /*
     External Interrupts: 
     2 (interrupt 0), 
@@ -1207,13 +1197,13 @@ void setup() {
     20 (interrupt 3), and 
     21 (interrupt 2). These pins can be configured to trigger an interrupt on a low value, a rising or falling edge, or a change in value. See the attachInterrupt() function for details.
   */
-  attachInterrupt(digitalPinToInterrupt(_PIN_KEY_HW), isrKey, CHANGE );
-  attachInterrupt(digitalPinToInterrupt(_PIN_BUTTON_HW), isrButton, CHANGE );
-  pinMode(_PIN_LIGHTBARRIER, OUTPUT);
-  pinMode(_PIN_RELAY, OUTPUT);
-  pinMode(_PIN_STATUS_ACK, OUTPUT);
-  pinMode(_PIN_STATUS_NO_ACK, OUTPUT);
-  pinMode(_PIN_STATUS_SENDING, OUTPUT);
+  attachInterrupt(digitalPinToInterrupt(CONFIG.getPinByName("key")->getNumber()), isrKey, CHANGE );
+  attachInterrupt(digitalPinToInterrupt(CONFIG.getPinByName("button")->getNumber()), isrButton, CHANGE );
+  pinMode(CONFIG.getPinByName("laser")->getNumber(), OUTPUT);
+  pinMode(CONFIG.getPinByName("relay")->getNumber(), OUTPUT);
+  pinMode(CONFIG.getPinByName("ledAck")->getNumber(), OUTPUT);
+  pinMode(CONFIG.getPinByName("ledNoAck")->getNumber(), OUTPUT);
+  pinMode(CONFIG.getPinByName("ledSending")->getNumber(), OUTPUT);
   Serial.println(F("GPIOs ready"));
   delay(500);
 
@@ -1233,10 +1223,10 @@ void setup() {
 
   // Generate new seed for more randomness for future
   // randomSeed(esp_random());
-  randomSeed(analogRead(_PIN_UNUSED));
+  randomSeed(analogRead(CONFIG.getPinByName("unused")->getNumber()));
 
   // Setup network
-  if(USE_NETWORK) {
+  if(CONFIG.use_network) {
 
     Serial.println(F("Initialize Ethernet with DHCP:"));
     if (Ethernet.begin(mac) == 0) {
@@ -1262,7 +1252,7 @@ void setup() {
 
     // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
     // by Arduino. You need to set the IP address directly.
-    client.begin(mqttHostAddress, net);
+    client.begin(CONFIG.MQTT.getHostAddress(), net);
     client.onMessage(messageReceived);
 
     connect();
@@ -1312,7 +1302,7 @@ void setup() {
 
 void loop() {
 
-  if(USE_NETWORK) {
+  if(CONFIG.use_network) {
     client.loop();
     if (!client.connected()) {
       connect();
