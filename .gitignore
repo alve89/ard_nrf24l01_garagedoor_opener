@@ -2,3 +2,4 @@ code/*/inols-clangd-err.log
 code/*/inols-clangd.log
 code/*/inols-err.log
 code/*/inols.log
+.vscode/*

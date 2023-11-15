@@ -17,11 +17,23 @@ class sensor {
     sensor(String);
     bool hasStateChanged();
     bool state();
-    bool lastState;
-    bool currentState;
+    bool lastState = false;
+    bool currentState = false;
+
     String mqttStateTopic;
     String mqttPayload;
 };
+
+sensor::sensor() {}
+
+sensor::sensor(String topic) {
+    mqttStateTopic = topic;
+}
+bool sensor::state() {
+  return currentState;
+}
+
+
 
 bool USE_NETWORK                      = true;
 bool TESTING_ONLY                     = false;
@@ -43,6 +55,7 @@ const uint8_t _PIN_RF_CE              = 7;
 const uint8_t _PIN_DOOR_OPEN          = 6;
 const uint8_t _PIN_RELAY              = 5;
 const uint8_t _PIN_BUTTON_HW          = 21;
+const uint8_t _PIN_KEY_HW             = 20;
 const uint8_t _PIN_ENABLE_TESTING     = 3;
 const uint8_t _PIN_DISABLE_NETWORK    = 2;
 
@@ -69,8 +82,8 @@ const uint8_t MAX_RECEIVE_ATTEMPTS    = 10;
 const uint8_t MAX_WAIT_DURATION_SEC   = 10;
 const uint16_t TIMEOUT                = 3000; // milliseconds => time between sending the string and marking this try as failure because of no answer
 const uint8_t WAIT_FOR_NEXT_RF_SENDING= 5;  // seconds
-const uint8_t DOOR_AREA_CLEARING_TIME = 15;  // seconds
-const uint8_t RF_AREA_CLEARING_TIME   = 25;  // seconds
+const uint8_t DOOR_AREA_CLEARING_TIME = 25;  // seconds
+const uint8_t RF_AREA_CLEARING_TIME   = 30;  // seconds
 const float LDR_TOLERANCE             = 30; // integer, will be transformed to percentage
 const uint16_t LDR_TRESHOLD           = 600; // value of analoagRead()
 
@@ -88,8 +101,13 @@ sensor garageOccupancy((String) "homeassistant/binary_sensor/garage_occupancy/st
 
 
 
+
+
 EthernetClient net;
 MQTTClient client(MAX_MQTT_PAYLOAD_SIZE);
+
+
+
 
 const uint8_t SENDING                 = 1;
 const uint8_t ACK                     = 2;
@@ -142,6 +160,7 @@ const byte RF       = 1;
 const byte MQTT     = 2;
 const byte SENSORS  = 3;
 const byte BUTTON   = 4;
+const byte KEY      = 5;
 const byte ACT_OPEN_DOOR = 1;
 const byte ACT_CLOSE_DOOR = 2;
 const byte ACT_STOP = 3;
@@ -164,18 +183,13 @@ String garageDoorCommandTopic = "homeassistant/cover/garage_door/set";
 String garageDoorCommandPayloadOpen = "OPEN";
 String garageDoorCommandPayloadClose = "CLOSE";
 String garageDoorCommandPayloadStop = "STOP";
+String garageDoorLogTopic = "homeassistant/sensor/garage_current_action/state";
+String garageButtonLogTopic = "homeassistant/sensor/garageButtonLogTopic/state";
+String garageKeyLogTopic = "homeassistant/sensor/garageKeyLogTopic/state";
 
 
 
 
-
-  sensor::sensor() {}
-  sensor::sensor(String topic) {
-      mqttStateTopic = topic;
-  }
-  bool sensor::state() {
-    return currentState;
-  }
 
 bool cipherSuccessful = false;
 bool ackReceived = false;
@@ -227,11 +241,11 @@ bool handleNewRFCommuncation() {
 
   if(cipherSuccessful) {
     // 3.   Send encrypted string and check if there's an ACK
-    client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Send encrypted string by RF, wait for ack"));
+    client.publish(garageDoorLogTopic, F("Send encrypted string by RF, wait for ack"));
     sendTime = millis();
     if(radio.write(cipherVector.bPlaintext, STRING_SIZE)) {
       ackReceived = true;
-      client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Ack successful, wait for answer"));
+      client.publish(garageDoorLogTopic, F("Ack successful, wait for answer"));
       Serial.println(F("# String successfully sent"));
       Serial.println(F("#"));
       Serial.println(F(""));
@@ -252,7 +266,7 @@ bool handleNewRFCommuncation() {
       while (!radio.available()) {
         if (isTimeout()) {
           Serial.println(F("############# TIMEOUT ############"));
-          client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Answer timed out"));
+          client.publish(garageDoorLogTopic, F("Answer timed out"));
           
           // Set all relevant settings for the RF module
           // Set it back to transmitter mode
@@ -270,7 +284,7 @@ bool handleNewRFCommuncation() {
         // byte len = RADIO_DYNAMIC_PAYLOAD_SIZE ? radio.getDynamicPayloadSize() : STRING_SIZE;
         // byte text[STRING_SIZE] = "";
         radio.read(&text, len);
-        client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Answer received"));
+        client.publish(garageDoorLogTopic, F("Answer received"));
         displayReceivedData(text);
       }
 
@@ -279,31 +293,19 @@ bool handleNewRFCommuncation() {
           // Receiver sent back a valid encrypted string
           answerIsValid = true;
           Serial.println("Strings match!");
-          client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Received string is valid"));
-        
-          if( isGarageDoorClosed.state() ) {
-            newTriggerDetected(RF, ACT_OPEN_DOOR);
-          }
-
-          if( isGarageDoorOpen.state() ) {
-            newTriggerDetected(RF, ACT_CLOSE_DOOR);
-          }
-
-          if( !isGarageDoorClosed.state() && isGarageDoorOpen.state() ) {
-            newTriggerDetected(RF, ACT_STOP);
-          }
+          client.publish(garageDoorLogTopic, F("Received string is valid"));
 
           return true;
         }
         else {
           Serial.println(F("Strings NOT match!"));
-          client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Received string is invalid"));
+          client.publish(garageDoorLogTopic, F("Received string is invalid"));
           return false;
         }
       }
     }
     else {
-      client.publish(F("homeassistant/sensor/garage_current_action/state"), F("No ack"));
+      client.publish(garageDoorLogTopic, F("No ack"));
       Serial.println(F("# Error while sending string"));
       Serial.println(F("#"));
       Serial.println(F(""));
@@ -324,10 +326,11 @@ void checkIfSensorsChanged() {
 
   if( isGarageDoorClosed.lastState != isGarageDoorClosed.currentState ) {
     // State has changed, let's check which way
+
     if( !isGarageDoorClosed.currentState) {
       // Door is opening
       isGarageDoorClosed.mqttPayload = "opening";
-      // client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is opening by changed state"));
+      // client.publish(garageDoorLogTopic, F("Door is opening by changed state"));
       lastOpeningTime = millis();
       // closedBy = DFLT;
       if( triggerType == DFLT ) {
@@ -336,7 +339,7 @@ void checkIfSensorsChanged() {
     }
     else {
       isGarageDoorClosed.mqttPayload = "closed";
-      // client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is closed by changed state"));
+      // client.publish(garageDoorLogTopic, F("Door is closed by changed state"));
       lastClosedTime = millis();
       // openedBy = DFLT;
     }
@@ -351,7 +354,7 @@ void checkIfSensorsChanged() {
     if( !isGarageDoorOpen.currentState ) {
       // Door is closing
       isGarageDoorOpen.mqttPayload = "closing";
-      // client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is closing by changed state"));
+      // client.publish(garageDoorLogTopic, F("Door is closing by changed state"));
       lastClosingTime = millis();
       // openedBy = DFLT;
       if( triggerType == DFLT ) {
@@ -360,7 +363,7 @@ void checkIfSensorsChanged() {
     }
     else {
       isGarageDoorOpen.mqttPayload = "open";
-      // client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Door is open by changed state"));
+      // client.publish(garageDoorLogTopic, F("Door is open by changed state"));
       lastOpenedTime = millis();
       // closedBy = DFLT;
     }
@@ -531,8 +534,33 @@ void publishConfig() {
   "   \"retain\":true,"  
   "   \"name\":\"Garage Current Action\","
   "   \"state_topic\":\"homeassistant/sensor/garage_current_action/state\","
-  // "   \"command_topic\":\"homeassistant/text/garage_current_action/set\","
   "   \"unique_id\":\"garage_current_action\","
+  "   \"device\": {"
+  "     \"identifiers\":["
+  "       \"garage_sensors/config\""
+  "       ],"
+  "      \"name\":\"Garage Sensors\""
+  "   }"
+  "}" );
+
+    String garage_button_log = F("{"
+  "   \"retain\":true,"  
+  "   \"name\":\"Garage Button Log\","
+  "   \"state_topic\":\"homeassistant/sensor/garage_button_log/state\","
+  "   \"unique_id\":\"garage_button_log\","
+  "   \"device\": {"
+  "     \"identifiers\":["
+  "       \"garage_sensors/config\""
+  "       ],"
+  "      \"name\":\"Garage Sensors\""
+  "   }"
+  "}" );
+
+      String garage_key_log = F("{"
+  "   \"retain\":true,"  
+  "   \"name\":\"Garage Key Log\","
+  "   \"state_topic\":\"homeassistant/sensor/garage_key_log/state\","
+  "   \"unique_id\":\"garage_key_log\","
   "   \"device\": {"
   "     \"identifiers\":["
   "       \"garage_sensors/config\""
@@ -545,6 +573,8 @@ void publishConfig() {
   client.publish(F("homeassistant/binary_sensor/garage_occupancy/config"), garage_occupancy);
   client.publish(F("homeassistant/cover/garage_door/config"), garage_door);
   client.publish(F("homeassistant/sensor/garage_current_action/config"), garage_sensors_action);
+  client.publish(F("homeassistant/sensor/garage_button_log/config"), garage_button_log);
+  client.publish(F("homeassistant/sensor/garage_key_log/config"), garage_key_log);
 }
 
 void connect() {
@@ -618,7 +648,6 @@ void resetRF() {
     radio.setPayloadSize(STRING_SIZE);
   }
 }
-
 
 bool isTimeout() {
   return (millis() - sendTime > TIMEOUT) ? true : false;
@@ -733,7 +762,7 @@ void closeDoor(uint8_t relayPin, bool inverted) {
 
 void generateNewString(const struct CipherVector *vector) {
    Serial.println(F("######## Generating new random string... ########"));
-  client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Generate new string"));
+  client.publish(garageDoorLogTopic, F("Generate new string"));
   uint8_t i = 0;
   while (i < STRING_SIZE) {
     char letter = letters[random(0, sizeof(letters) - 1)];
@@ -741,12 +770,12 @@ void generateNewString(const struct CipherVector *vector) {
     cipherVector.cPlaintext[i] = letter;
     i++;
   }
-  client.publish(F("homeassistant/sensor/garage_current_action/state"), F("New string generated"));
+  client.publish(garageDoorLogTopic, F("New string generated"));
 }
 
 bool handleCipher(BlockCipher *cipher, const struct CipherVector *vector, size_t keySize, bool decryption) {
    Serial.println(F("######## Encrypting string... ########"));
-  client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Encrypt string"));
+  client.publish(garageDoorLogTopic, F("Encrypt string"));
 
 
   // Display used key
@@ -768,11 +797,11 @@ bool handleCipher(BlockCipher *cipher, const struct CipherVector *vector, size_t
 
   if (memcmp(BUFFER, vector->bCiphertext, STRING_SIZE) == 0) {
      Serial.println(F("Passed"));
-    client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Encryption passed"));
+    client.publish(garageDoorLogTopic, F("Encryption passed"));
     return true;
   } else {
      Serial.println(F("Failed"));
-    client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Encryption passed"));
+    client.publish(garageDoorLogTopic, F("Encryption passed"));
     return false;
   }
 }
@@ -881,28 +910,275 @@ void newTriggerDetected(byte type, byte action) {
   triggeredAction = action;
 }
 
-void isr() {
+void isrButton() {
 
+  if( USE_NETWORK ) {
+    bool status = _INVERT_BUTTON_HW ? !digitalRead(_PIN_BUTTON_HW) : digitalRead(_PIN_BUTTON_HW);
+    String state = status ? "ON" : "OFF";
+    client.publish(garageButtonLogTopic, state);
+  }
 
-  Serial.print(F("Button pushed - "));
+  return; // TODO Remove when fixed the button electronic
 
   if( isGarageDoorClosed.state() ) {
-    Serial.println(F("open door"));
     newTriggerDetected(BUTTON, ACT_OPEN_DOOR);
   }
   
   if( isGarageDoorOpen.state() ) {
-    Serial.println(F("close door"));
     newTriggerDetected(BUTTON, ACT_CLOSE_DOOR);
   }
 
   if( !isGarageDoorClosed.state() && !isGarageDoorOpen.state() ) {
-    Serial.println(F("stop door"));
     newTriggerDetected(BUTTON, ACT_STOP);
+  }
+
+
+}
+
+void isrKey() {
+  if( USE_NETWORK ) {
+    bool status = _INVERT_BUTTON_HW ? !digitalRead(_PIN_BUTTON_HW) : digitalRead(_PIN_BUTTON_HW);
+    String state = status ? "ON" : "OFF";
+    client.publish(garageButtonLogTopic, state);
+  }
+
+  return; // TODO Remove when fixed the key electronic
+
+
+  if( isGarageDoorClosed.state() ) {
+    newTriggerDetected(KEY, ACT_OPEN_DOOR);
+  }
+  
+  if( isGarageDoorOpen.state() ) {
+    newTriggerDetected(KEY, ACT_CLOSE_DOOR);
+  }
+
+  if( !isGarageDoorClosed.state() && !isGarageDoorOpen.state() ) {
+    newTriggerDetected(KEY, ACT_STOP);
   }
 
 }
 
+String getTriggerName(byte type) {
+  String triggerName;
+
+  switch( type ) {
+    case BUTTON:
+      triggerName = "BUTTON";
+      break;
+
+    case MQTT:
+      triggerName = "MQTT";
+      break;
+    
+    case RF:
+      triggerName = "RF";
+      break;
+
+    case SENSORS:
+      triggerName = "SENORS";
+      break;
+
+    case KEY:
+      triggerName = "KEY";
+      break;
+
+    default:
+      triggerName = "changed sensor state";
+      break;
+
+  }
+  
+  return triggerName;
+}
+
+void resetDetectedTrigger() {
+  triggerDetected = false;
+  triggeredAction = DFLT;
+  triggerType = DFLT;
+}
+
+bool newTriggerExists() {
+  return triggerDetected;
+}
+
+// TODO Add MQTT-STOP-handler
+void handleGarage() {
+
+  if( garageOccupancy.state() ) {
+    // Garage is occupied => nothing to do
+    Serial.println(F("Garage is occupied")); delay(delayTime);
+
+    lastOccupancyTime = millis();
+
+  }
+
+
+
+
+
+  if( !isGarageDoorOpen.state() ) {
+    // Door is not open
+    Serial.println(F("Door is not open")); delay(delayTime);
+
+    if( isGarageDoorClosed.state() ) {
+      // Door is closed
+      Serial.println(F("Door is closed")); delay(delayTime);
+
+      if( newTriggerExists() ) {
+        // The door got a trigger from any of the available channels (RF / MQTT / BUTTON)
+
+        if( triggeredAction = ACT_OPEN_DOOR ) {
+          // Open the door now
+
+          // Trigger the relay
+          openDoor();
+
+          // Wait until the door started movement
+          while( isDoorClosed() ) {
+            delay(1); // Give the door some time to start the movement
+          } 
+        
+          client.publish(garageDoorLogTopic, "The door was opened by " + getTriggerName(triggerType) );
+
+          // Reset the trigger information
+          if( triggerType == RF ) {
+            resetDetectedTrigger();
+            triggerType = RF; // Keep this information for automatic closing the door if no car appears
+          }
+          else {
+            resetDetectedTrigger();
+          }
+
+          return;
+        }
+      }
+
+      // Door is closed
+      if( !newTriggerExists()
+      && !garageOccupancy.state() 
+      && (millis() - lastClosedTime > (RF_AREA_CLEARING_TIME*1000)) ) {
+        // Car is far enough away that sending RF strings will not result in an accidentally opened door => generate and send string
+        Serial.println(F("Car is far enough away for the next RF string")); delay(delayTime);
+
+        if( millis() - sendTime > (WAIT_FOR_NEXT_RF_SENDING*1000) ) {
+          // Last sending was a few seconds before, try again
+          Serial.println(F("Last sending was a few seconds before, try again")); delay(delayTime);
+
+          if( handleNewRFCommuncation() ) {
+            // RF communication was successful
+            Serial.println(F("RF communication was successful")); delay(delayTime);
+            
+            if( isGarageDoorClosed.state() ) {
+              newTriggerDetected(RF, ACT_OPEN_DOOR);
+            }
+            return;
+          }
+        }
+      }
+    } // isGarageDoorClosed.state()
+    else {
+      // Door is not closed anymore but still not fully opened => do nothing (until door is fully opened)
+      if( newTriggerExists() ) {
+        if( triggeredAction == ACT_STOP ) {
+          triggerDoorRelay();
+          
+          client.publish(garageDoorLogTopic, "The door was stopped by " + getTriggerName(triggerType) );
+
+          // Reset the trigger information
+          resetDetectedTrigger();
+        }
+      }
+    }
+  } // ! isGarageDoorOpen.state()
+  else {
+    // Garage is open
+
+      // Either car just left the garage and is still in front of the garage (DOOR_AREA_CLEAR_TIME)
+      // or car left the garage a few seconds before and already drove away (RF_AREA_CLEAR_TIME)
+      // or the garage was opened by button (car inside or not)
+      // or the garage was opened by MQTT (car inside or not)
+
+    if( newTriggerExists() ) {
+      if( triggeredAction == ACT_CLOSE_DOOR ) {
+
+        // Trigger the relay
+        closeDoor();
+
+        // Wait until the door started movement
+        while( isDoorOpen() ) {
+          delay(1); // Give the door some time to start the movement
+        } 
+
+        delay(100);
+        checkIfSensorsChanged();
+
+        client.publish(garageDoorLogTopic, "The door was closed by " + getTriggerName(triggerType) );
+
+        // Reset the trigger information
+        resetDetectedTrigger();
+
+        return;
+      }
+    }
+
+    // else: no trigger to close
+    if( !garageOccupancy.state() ) { // and garage is still OPEN
+      // Garage is not occupied
+      // Wasn't the car in the garage before
+      // or did the car just leave the garage?
+
+
+
+      if( triggerType == RF ) {
+        // Garage was opened by RF => the car wasn't in the garage before
+
+        if( millis() - lastOpenedTime > (DOOR_AREA_CLEARING_TIME*1000) ) {
+          // No car appeared in configured time => close door again
+
+          Serial.println(F("No car appeared")); delay(delayTime);
+          client.publish(garageDoorLogTopic, F("No car appeared after opening door by RF"));
+
+          // Trigger the relay
+          closeDoor();
+
+          // Wait until the door started movement
+          while( isDoorOpen() ) {
+            delay(10); // Give the door some time to start the movement
+          } 
+
+          delay(100);
+          checkIfSensorsChanged();
+
+          return;
+        }
+      } // ! garageOccupancy.state()
+      else {
+        // Door was opened on another way than RF
+        if( millis() - lastOccupancyTime >= (DOOR_AREA_CLEARING_TIME*1000) 
+         && millis() - lastOccupancyTime <= (RF_AREA_CLEARING_TIME*1000) ) {
+          // Car just left the garage
+
+          Serial.println(F("Car just left the garage")); delay(delayTime);
+          client.publish(garageDoorLogTopic, F("Car just left the garage"));
+
+          // Trigger the relay
+          closeDoor();
+
+          // Wait until the door started movement
+          while( isDoorOpen() ) {
+            delay(10); // Give the door some time to start the movement
+          } 
+
+          delay(100);
+          checkIfSensorsChanged();
+
+          return;
+        }
+      }
+    } // ! garageOccupancy.state()
+  }
+}
 
 void setup() {
   // put your setup code here, to run once:
@@ -921,7 +1197,18 @@ void setup() {
   pinMode(_PIN_ENABLE_TESTING, INPUT_PULLUP);
   pinMode(_PIN_DISABLE_NETWORK, INPUT_PULLUP);
   pinMode(_PIN_BUTTON_HW, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(_PIN_BUTTON_HW), isr, LOW);
+  pinMode(_PIN_KEY_HW, INPUT_PULLUP);
+  /*
+    External Interrupts: 
+    2 (interrupt 0), 
+    3 (interrupt 1), 
+    18 (interrupt 5), 
+    19 (interrupt 4), 
+    20 (interrupt 3), and 
+    21 (interrupt 2). These pins can be configured to trigger an interrupt on a low value, a rising or falling edge, or a change in value. See the attachInterrupt() function for details.
+  */
+  attachInterrupt(digitalPinToInterrupt(_PIN_KEY_HW), isrKey, CHANGE );
+  attachInterrupt(digitalPinToInterrupt(_PIN_BUTTON_HW), isrButton, CHANGE );
   pinMode(_PIN_LIGHTBARRIER, OUTPUT);
   pinMode(_PIN_RELAY, OUTPUT);
   pinMode(_PIN_STATUS_ACK, OUTPUT);
@@ -1018,241 +1305,10 @@ void setup() {
   }
 
   Serial.println(F("I am the stationary device - ready!"));
-  client.publish(F("homeassistant/sensor/garage_current_action/state"), F("Device has finished booting, run loop() now"));
+  client.publish(garageDoorLogTopic, F("Device has finished booting, run loop() now"));
   client.publish(F("homeassistant/cover/garage_door/set"), "", true, 0); // First delete this payload
   client.subscribe("homeassistant/cover/garage_door/set"); // Then subscribe to this topic
 }
-
-
-
-
-byte currentProcessPhase;
-
-// 0    closed, unoccupied, wait for valid answer
-// 1    unclosed, unopen, unoccupied, wait for open door and car to appear
-// 2    open, unoccupied, wait for car to appear
-// 3    open, occupied, wait for manual closing
-// 4    closed, occupied, do nothing
-// 5    open, occupied, wait for car to leave
-// 6    open, unoccupied, wait for car leaving the door clearing area
-// 7    closing, unoccupied, wait for car leaving the RF area
-//    back to 0
-
-
-String getTriggerName(byte type) {
-  String triggerName;
-
-  switch( type ) {
-    case BUTTON:
-      triggerName = "BUTTON";
-      break;
-
-    case MQTT:
-      triggerName = "MQTT";
-      break;
-    
-    case RF:
-      triggerName = "RF";
-      break;
-
-    default:
-      triggerName = "changed sensor state";
-      break;
-
-  }
-  
-  return triggerName;
-
-}
-
-void resetDetectedTrigger() {
-  triggerDetected = false;
-  triggeredAction = DFLT;
-//  triggerType = DFLT;
-}
-
-bool newTriggerExists() {
-  return triggerDetected;
-}
-
-
-
-// TODO Add MQTT-STOP-handler
-void handleGarage() {
-  if( garageOccupancy.state() ) {
-    // Garage is occupied => nothing to do
-    Serial.println(F("Garage is occupied")); delay(delayTime);
-
-    lastOccupancyTime = millis();
-
-  }
-
-
-
-
-
-  if( !isGarageDoorOpen.state() ) {
-    // Door is not open
-    Serial.println(F("Door is not open")); delay(delayTime);
-
-    if( isGarageDoorClosed.state() ) {
-      // Door is closed
-      Serial.println(F("Door is closed")); delay(delayTime);
-
-      if( newTriggerExists() ) {
-        // The door got a trigger from any of the available channels (RF / MQTT / BUTTON)
-
-        if( triggeredAction = ACT_OPEN_DOOR ) {
-          // Open the door now
-
-          // Trigger the relay
-          openDoor();
-
-          // Wait until the door started movement
-          while( isDoorClosed() ) {
-            delay(10); // Give the door some time to start the movement
-          } 
-
-          delay(100);
-          checkIfSensorsChanged();
-        
-          client.publish(F("homeassistant/sensor/garage_current_action"), "The door was opened by " + getTriggerName(triggerType) );
-
-          // Reset the trigger information
-          resetDetectedTrigger();
-
-          return;
-        }
-      }
-
-
-      if( !newTriggerExists()
-      && !garageOccupancy.state() 
-      && (millis() - lastClosingTime > (RF_AREA_CLEARING_TIME*1000)) ) { // TODO Replace lastClosingTime by lastClosedTime
-        // Car is far enough away that sending RF strings will not result in an accidentally opened door => generate and send string
-        Serial.println(F("Car is far enough away for the next RF string")); delay(delayTime);
-
-        if( millis() - sendTime > (WAIT_FOR_NEXT_RF_SENDING*1000) ) {
-          // Last sending was a few seconds before, try again
-          Serial.println(F("Last sending was a few seconds before, try again")); delay(delayTime);
-
-          if( handleNewRFCommuncation() ) {
-            // RF communication was successfull
-            Serial.println(F("RF communication was successfull")); delay(delayTime);
-            return;
-          }
-        }
-      }
-    }
-    else {
-      // Door is not closed anymore but still not fully opened => do nothing (until door is fully opened)
-      if( newTriggerExists() ) {
-        if( triggeredAction == ACT_STOP ) {
-          triggerDoorRelay();
-          
-          client.publish(F("homeassistant/sensor/garage_current_action"), "The door was stopped by " + getTriggerName(triggerType) );
-
-          // Reset the trigger information
-          resetDetectedTrigger();
-        }
-      }
-    }
-  }
-  else {
-    // Garage is open
-
-      // Either car just left the garage and is still in front of the garage (DOOR_AREA_CLEAR_TIME)
-      // or car left the garage a few seconds before and already drove away (RF_AREA_CLEAR_TIME)
-      // or the garage was opened by button (car inside or not)
-      // or the garage was opened by MQTT (car inside or not)
-
-    if( newTriggerExists() ) {
-      if( triggeredAction == ACT_CLOSE_DOOR ) {
-
-        // Trigger the relay
-        closeDoor();
-
-        // Wait until the door started movement
-        while( isDoorOpen() ) {
-          delay(10); // Give the door some time to start the movement
-        } 
-
-        delay(100);
-        checkIfSensorsChanged();
-
-        client.publish(F("homeassistant/sensor/garage_current_action"), "The door was closed by " + getTriggerName(triggerType) );
-
-        // Reset the trigger information
-        resetDetectedTrigger();
-
-        return;
-      }
-    }
-
-
-    if( !garageOccupancy.state() ) { // and garage is still OPEN
-      // Garage is not occupied
-      // Wasn't the car in the garage before
-      // or did the car just leave the garage?
-
-
-
-      if( triggerType == RF ) {
-        // Garage was opened by RF => the car wasn't in the garage before
-        if( millis() - lastOpeningTime > (DOOR_AREA_CLEARING_TIME*1000) ) { // TODO Replace lastOpeningTime by lastOpenedTime
-          // No car appeared in configured time => close door again
-          Serial.println(F("No car appeared")); delay(delayTime);
-          client.publish(F("homeassistant/sensor/garage_current_action"), F("No car appeared after opening door by RF"));
-
-          // Trigger the relay
-          closeDoor();
-
-          // Wait until the door started movement
-          while( isDoorOpen() ) {
-            delay(10); // Give the door some time to start the movement
-          } 
-
-          delay(100);
-          checkIfSensorsChanged(); 
-
-          return;
-        }
-      }
-      else {
-        // Door was opened on another way than RF
-        if( millis() - lastOccupancyTime > (DOOR_AREA_CLEARING_TIME*1000) 
-         && millis() - lastOccupancyTime < (RF_AREA_CLEARING_TIME*1000) ) {
-          // Car just left the garage
-          Serial.println(F("Car just left the garage")); delay(delayTime);
-          client.publish(F("homeassistant/sensor/garage_current_action"), F("Car just left the garage"));
-
-          // Trigger the relay
-          closeDoor();
-
-          // Wait until the door started movement
-          while( isDoorOpen() ) {
-            delay(10); // Give the door some time to start the movement
-          } 
-
-          delay(100);
-          checkIfSensorsChanged();
-
-          return;
-        }
-      }
-    }
-  }
-}
-
-/*
-External Interrupts: 
-2 (interrupt 0), 
-3 (interrupt 1), 
-18 (interrupt 5), 
-19 (interrupt 4), 
-20 (interrupt 3), and 
-21 (interrupt 2). These pins can be configured to trigger an interrupt on a low value, a rising or falling edge, or a change in value. See the attachInterrupt() function for details.
-*/
 
 void loop() {
 
