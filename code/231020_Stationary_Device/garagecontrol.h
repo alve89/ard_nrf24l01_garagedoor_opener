@@ -108,6 +108,7 @@ class config {
                 const byte address           = "00001";
                 uint8_t readingPipe             = 0;
                 uint8_t channel                 = 0;
+                unsigned long sendTime          = 0;
                 bool dynamicPayloadSize         = false;
                 uint8_t waitForNextRFSending = 5;
                 config::pin* csn;
@@ -115,7 +116,7 @@ class config {
 
 
                 void setTimeout(uint16_t);
-                bool getTimeout();
+                uint16_t getTimeout();
 
                 config::pin* getCSNPin();
                 config::pin* getCEPin();
@@ -130,6 +131,7 @@ class config {
                 uint16_t number = 99;
                 String name = "noNameAsDefault";
                 bool inverted = false;
+                bool state = false;
 
                 pin();
                 pin(String, uint16_t, bool);
@@ -138,6 +140,7 @@ class config {
                 bool isInverted();
                 uint8_t getNumber();
                 String getName();
+                bool getState();
         };
 
 

@@ -64,9 +64,11 @@ bool handleNewRFCommuncation() {
 
   if(cipherSuccessful) {
     // 3.   Send encrypted string and check if there's an ACK
+    
     sendTime = millis();
     if(radio.write(cipherVector.bPlaintext, STRING_SIZE)) {
       ackReceived = true;
+      
       Serial.println(F("# String successfully sent"));
       Serial.println(F("#"));
       Serial.println(F(""));
@@ -74,6 +76,7 @@ bool handleNewRFCommuncation() {
 
     if(ackReceived) {
       // 4.   Wait until receiving a string or until timeout
+      Serial.println(F("Ack received"));
       radio.setChannel(0);
       radio.openReadingPipe(RADIO_READINGPIPE, RADIO_ADDRESS);
       radio.startListening();
@@ -103,6 +106,7 @@ bool handleNewRFCommuncation() {
         answerReceived = true;
         // byte len = RADIO_DYNAMIC_PAYLOAD_SIZE ? radio.getDynamicPayloadSize() : STRING_SIZE;
         // byte text[STRING_SIZE] = "";
+        
         radio.read(&text, len);
         displayReceivedData(text);
       }

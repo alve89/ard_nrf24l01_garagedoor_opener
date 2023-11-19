@@ -23,9 +23,7 @@ void config::newPin(String pinName, uint16_t pinNumber, bool pinInverted) {
         if( CONFIG.pins[p].isValidPin() ) continue;
 
         pins[p] = pin(pinName, pinNumber, pinInverted);
-    //   pins[p].name = pinName;
-    //   pins[p].number = pinNumber;
-    //   pins[p].inverted = pinInverted;
+
         return;
     }
     // throw pinNotFound(String("This pin was not found!"));
@@ -46,7 +44,6 @@ config::pin* config::getPinByName(String pinName) {
     for(uint8_t p=0; p<10; p++) {
       if( pins[p].getName() == pinName ) {
         pin* foundPin = &pins[p];
-        //return &leds[l];
         return foundPin;
       }
     }
@@ -91,18 +88,25 @@ bool config::pin::isValidPin() {
 }
 
 
-void config::rf::setTimeout(uint16_t time) {
-    timeout = time;
+bool config::pin::getState() {
+    bool tempState = digitalRead(number);
+    state = isInverted() ? !tempState : tempState;
+    return state;
 }
 
 
-bool config::rf::getTimeout() {
+void config::rf::setTimeout(uint16_t newTimeout) {
+    timeout = newTimeout;
+}
+
+uint16_t config::rf::getTimeout() {
     return timeout;
 }
 
 config::pin* getCSNPin() {
     CONFIG.getPinByName("rf_csn");
 }
+
 config::pin* getCEPin() {
     CONFIG.getPinByName("rf_ce");
 }
