@@ -2,6 +2,7 @@
     #define garagedooropener_h
 
 #include <Arduino.h>
+#include<avr/wdt.h>
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
@@ -51,6 +52,7 @@ struct CipherVector {
 
 
 
+
 class sensor {
   public:
     sensor();
@@ -59,6 +61,7 @@ class sensor {
     bool state();
     bool lastState = false;
     bool currentState = false;
+
 
     String mqttStateTopic;
     String mqttPayload;
@@ -110,7 +113,10 @@ class config {
                 uint8_t channel                 = 0;
                 unsigned long sendTime          = 0;
                 bool dynamicPayloadSize         = false;
-                uint8_t waitForNextRFSending = 5;
+                uint8_t waitForNextRFSending    = 5;
+                unsigned long maxInitTime       = 5000;
+                bool state = false;
+                bool lastState = false;
                 config::pin* csn;
                 config::pin* ce;
 
@@ -124,6 +130,8 @@ class config {
 
 
                 rf();
+                void init();
+                bool stateChanged();
         };
 
         class pin {
@@ -152,6 +160,7 @@ class config {
         uint8_t doorAreaClearingTime = 25; // seconds
         uint8_t RFAreaClearingTime = 30; // seconds
         float ldrTolerance         = 30; // integer, will be transformed to percentage
+        unsigned long bootingStartTime = 0;
         pin pins[20];
         pin* getPinByName(String);
 
@@ -172,8 +181,50 @@ extern MQTTClient client;
 extern SpeckTiny speckTiny;
 extern RF24 radio;
 
+extern String changedTopic;
+extern String changedTopicPayload;
+extern String garageDoorCommandTopic;
+extern String garageDoorCommandPayloadOpen;
+extern String garageDoorCommandPayloadClose;
+extern String garageDoorCommandPayloadStop;
+extern String garageDoorLogTopic;
+extern String garageButtonLogTopic;
+extern String garageKeyLogTopic;
 
+extern bool cipherSuccessful;
+extern bool ackReceived;
+extern bool answerReceived;
+extern bool answerIsValid;
 
+extern bool triggerDetected;
+
+extern byte triggerType;
+extern byte triggeredAction;
+extern String triggerName;
+
+extern unsigned long timerForLeavingCar;
+extern unsigned long lightbarrierEnabledTime;
+extern unsigned long lightbarrierDisabledTime;
+
+extern unsigned long lastOccupancyTime;
+extern unsigned long lastOpeningTime;
+extern unsigned long lastClosingTime;
+extern unsigned long lastOpenedTime;
+extern unsigned long lastClosedTime;
+
+extern bool lightbarrierStatus;
+extern float lightbarrierValue1;
+extern float lightbarrierValue2;
+
+extern unsigned long delayTime;
+
+extern sensor isGarageDoorClosed;
+extern sensor isGarageDoorOpen;
+extern sensor garageOccupancy;
+
+extern CipherVector cipherVector;
+
+extern byte BUFFER[STRING_SIZE];
 
 
 bool handleCipher(BlockCipher *, const struct CipherVector *, size_t, bool = true);
@@ -186,14 +237,30 @@ void closeDoor(uint8_t = CONFIG.getPinByName("relay")->getNumber(), bool = false
 void triggerDoorRelay(uint8_t = CONFIG.getPinByName("relay")->getNumber(), bool = false);
 bool isDoorClosed();
 bool isGarageOccupied();
-bool isTimeout();
+bool isTimeout(unsigned long, unsigned long);
 void resetRF();
 void toggleStatusLed(uint8_t, uint16_t = 5000);
 void messageReceived(String&, String&);
 void checkIfSensorsChanged();
 bool handleNewRFCommuncation();
-void handleClosedDoorAndUnoccupiedGarage();
-void handleOpenDoorAndOccupiedGarage();
 void checkConfig();
+void reboot();
+
+
+
+void publishConfig();
+void connect();
+bool isDoorOpen();
+void checkChangedMqttTopic();
+void newTriggerDetected(byte, byte);
+
+void isrKey();
+void isrButton();
+
+void handleGarage();
+
+void displayEncryptedString(const struct CipherVector*);
+
+
 
 #endif
