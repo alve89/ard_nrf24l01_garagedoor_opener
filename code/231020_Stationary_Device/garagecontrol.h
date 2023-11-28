@@ -157,10 +157,12 @@ class config {
 
         bool use_network = true;
         bool testing_only = false;
+        bool dhcpInitSuccessful = false;
         uint8_t doorAreaClearingTime = 25; // seconds
         uint8_t RFAreaClearingTime = 30; // seconds
+        uint8_t rebootCycle = 24; // hours
         float ldrTolerance         = 30; // integer, will be transformed to percentage
-        unsigned long bootingStartTime = 0;
+        unsigned long bootingTime = 0;
         pin pins[20];
         pin* getPinByName(String);
 
@@ -244,7 +246,7 @@ void messageReceived(String&, String&);
 void checkIfSensorsChanged();
 bool handleNewRFCommuncation();
 void checkConfig();
-void reboot();
+void reboot(String);
 
 
 

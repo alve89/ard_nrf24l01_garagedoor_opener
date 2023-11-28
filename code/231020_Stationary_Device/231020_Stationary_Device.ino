@@ -107,6 +107,7 @@ String garageDoorLogTopic = "homeassistant/sensor/garage_current_action/state";
 String garageButtonLogTopic = "homeassistant/sensor/garage_button_log/state";
 String garageKeyLogTopic = "homeassistant/sensor/garage_key_log/state";
 String garageRFStateTopic = "homeassistant/binary_sensor/garage_rf_state/state";
+String garageBootTimeTopic = "homeassistant/sensor/garage_boot_time/state";
 
 
 
@@ -119,7 +120,7 @@ String garageRFStateTopic = "homeassistant/binary_sensor/garage_rf_state/state";
 
 void setup() {
 
-  CONFIG.bootingStartTime = millis();
+  CONFIG.bootingTime = millis();
 
 
   wdt_disable();  /* Disable the watchdog and wait for more than 2 seconds */
@@ -215,7 +216,28 @@ CONFIG.newPin("rf_ce", 7);
   if(CONFIG.use_network) {
 
     Serial.println(F("Initialize Ethernet with DHCP:"));
-    if (Ethernet.begin(mac) == 0) {
+
+    unsigned long dhcpInitStartTime = millis();
+    
+    if( CONFIG.use_network ) {
+      while( true ) {
+        Serial.println(F("Trying to initialize DHCP"));
+        if( Ethernet.begin(mac) == 0 ) {
+          // DHCP init failed
+          CONFIG.use_network = false;
+          CONFIG.dhcpInitSuccessful = false;
+        }
+        else {
+          // DHCP init successful
+          CONFIG.use_network = true;
+          CONFIG.dhcpInitSuccessful = true;
+          break;
+        }
+        if(isTimeout(dhcpInitStartTime, 5000)) break;
+      }
+    }
+    
+    if( !CONFIG.dhcpInitSuccessful ) {
       Serial.println(F("Failed to configure Ethernet using DHCP"));
       // Check for Ethernet hardware present
       if (Ethernet.hardwareStatus() == EthernetNoHardware) {
@@ -238,23 +260,23 @@ CONFIG.newPin("rf_ce", 7);
     }
 
 
-  // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
-  // by Arduino. You need to set the IP address directly.
-  const char hostAddressTemp[CONFIG.MQTT.getHostAddress().length()+1] = "";
-  CONFIG.MQTT.getHostAddress().toCharArray(hostAddressTemp, CONFIG.MQTT.getHostAddress().length()+1);
-  client.begin(hostAddressTemp, net);
-  client.onMessage(messageReceived);
+    // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
+    // by Arduino. You need to set the IP address directly.
+    const char hostAddressTemp[CONFIG.MQTT.getHostAddress().length()+1] = "";
+    CONFIG.MQTT.getHostAddress().toCharArray(hostAddressTemp, CONFIG.MQTT.getHostAddress().length()+1);
+    client.begin(hostAddressTemp, net);
+    client.onMessage(messageReceived);
 
-
+    // Connecto to MQTT server
     connect();
 
-
+    // Publish basic configuration of MQTT HA-entities
     publishConfig();
-    // isGarageDoorClosed.mqttStateTopic = "homeassistant/cover/garage_door/state";
-    // isGarageDoorClosed.mqttStateTopic = "homeassistant/cover/garage_door/state";
-    // isGarageDoorOpen.mqttStateTopic = "homeassistant/cover/garage_door/state";
-  
-  
+
+    client.publish(garageDoorCommandTopic, "", true, 0); // First delete this payload
+    client.subscribe(garageDoorCommandTopic); // Then subscribe to this topic
+
+
 
     isGarageDoorClosed.currentState = isDoorClosed();
     isGarageDoorOpen.currentState = isDoorOpen();
@@ -266,14 +288,14 @@ CONFIG.newPin("rf_ce", 7);
     else {
       garageOccupancy.mqttPayload = "OFF";
     }
-
     client.publish(garageOccupancy.mqttStateTopic, garageOccupancy.mqttPayload);
 
-
+    
     if(isGarageDoorOpen.currentState) {
       // Door is open
       isGarageDoorOpen.mqttPayload = "open";
       client.publish(isGarageDoorOpen.mqttStateTopic, isGarageDoorOpen.mqttPayload);
+      
     }
     else if(isGarageDoorClosed.currentState) {
       // Door is closed
@@ -283,21 +305,27 @@ CONFIG.newPin("rf_ce", 7);
     else {
       client.publish(isGarageDoorClosed.mqttStateTopic, "Unknown");
     }
+
+
+    if(CONFIG.RF.state) {
+      client.publish(garageRFStateTopic, F("ON"));
+    }
+    else {
+      client.publish(garageRFStateTopic, F("OFF"));
+    }
+
+
+    client.publish(garageDoorLogTopic, F("Device has finished booting, run loop() now"));
+    client.publish(garageBootTimeTopic, F("hello")); // TODO Replace by NTP time
+
+
   }
   else {
     Serial.println(F("#################################### ! NO NETWORK USAGE ! ####################################"));
   }
 
 
-  if(CONFIG.use_network) {
-    client.publish(garageDoorLogTopic, F("Device has finished booting, run loop() now"));
-    client.publish(garageDoorCommandTopic, "", true, 0); // First delete this payload
-    client.subscribe(garageDoorCommandTopic); // Then subscribe to this topic
-
-
-
-  }
-
+  CONFIG.bootingTime = millis();
 
 }
 
@@ -306,17 +334,53 @@ CONFIG.newPin("rf_ce", 7);
 
 void loop() {
 
+  // Re-initialize the RF module
+  CONFIG.RF.init();
 
   if(CONFIG.use_network) {
+
+    // Renew the DHCP connection
+    switch( Ethernet.maintain() ) {
+      case 1:
+        //renewed fail
+        Serial.println(F("Error: Renew failed"));
+        break;
+
+      case 2:
+        //renewed success
+        Serial.println(F("Renew successful"));
+        //print your local IP address:
+        Serial.print(F("IP address: "));
+        Serial.println(Ethernet.localIP());
+        break;
+
+      case 3:
+        //rebind fail
+        Serial.println(F("Error: Rebind failed"));
+        break;
+
+      case 4:
+        //rebind success
+        Serial.println(F("Rebind successful"));
+        //print your local IP address:
+        Serial.print(F("IP address: "));
+        Serial.println(Ethernet.localIP());
+        break;
+
+      default:
+        //nothing happened
+        break;
+    }
+
+    // Send keep-alive information to MQTT server
     client.loop();
+
+    // If client is not connected to MQTT server, re-connect it
     if (!client.connected()) {
       connect();
     }
 
-
-    CONFIG.RF.init();
-
-
+    // Publish changed RF state to MQTT
     if( CONFIG.RF.stateChanged() ) {
       if(CONFIG.RF.state) {
         client.publish(garageRFStateTopic, F("ON"));
@@ -336,5 +400,15 @@ void loop() {
   checkChangedMqttTopic();
 
   // Handle the sensor/actor controlling
-  handleGarage();
+  handleGarage(); // TODO Garage closes after reboot when no car is inside
+
+
+
+
+  if(isTimeout(CONFIG.bootingTime, CONFIG.rebootCycle*(3600ul*1000ul))) {  // Reboot device after 24 hours
+      String reason = F("Auto-reboot after configured time [CONFIG.rebootCycle]");
+      if(CONFIG.use_network) client.publish(garageDoorLogTopic, reason + String(F(", reboot now")));
+      reboot(reason); // TODO Add MQTT information for reboot time
+  }
+
 }

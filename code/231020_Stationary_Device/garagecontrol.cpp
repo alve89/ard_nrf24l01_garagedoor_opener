@@ -38,7 +38,18 @@ void config::rf::init() {
   }
   
   if( stateChanged() ) {
-    Serial.print(F("State changed! New state: ")); Serial.println(state);
+    Serial.print(F("State changed! New state: ")); 
+    switch(state) {
+      case 0:
+        Serial.println(F("RF not ready"));
+        break;
+      case 1:
+        Serial.println(F("RF ready"));
+        break;
+      default:
+        Serial.println(F("Weird default case?!"));
+        break;
+    }
   }
 }
 
@@ -287,6 +298,20 @@ void publishConfig() {
   "      \"name\":\"Garage Sensors\""
   "   }"
   "}" );
+
+
+        String garage_boot_time = F("{"
+  "   \"retain\":true,"  
+  "   \"name\":\"Garage Boot Time\","
+  "   \"state_topic\":\"homeassistant/sensor/garage_boot_time/state\","
+  "   \"unique_id\":\"garage_boot_time\","
+  "   \"device\": {"
+  "     \"identifiers\":["
+  "       \"garage_sensors/config\""
+  "       ],"
+  "      \"name\":\"Garage Sensors\""
+  "   }"
+  "}" );
  
 
   client.publish(F("homeassistant/binary_sensor/garage_occupancy/config"), garage_occupancy);
@@ -297,6 +322,7 @@ void publishConfig() {
   client.publish(F("homeassistant/sensor/garage_key_log/config"), garage_key_log);
 
   client.publish(F("homeassistant/binary_sensor/garage_rf_state/config"), garage_rf_state);
+  client.publish(F("homeassistant/sensor/garage_boot_time/config"), garage_boot_time);
 } 
 
 void connect() {
@@ -313,7 +339,7 @@ void connect() {
   unsigned long connectingStartTime = millis();
   while(!client.connect(clientIdTemp, userTemp, pwdTemp)) {
     Serial.println(client.lastError());
-    if(isTimeout(connectingStartTime, 10000)) reboot();
+    if(isTimeout(connectingStartTime, 10000)) reboot(F("MQTT connecting timeout"));
   }
 
   Serial.println(F("Connected to MQTT server"));
@@ -384,7 +410,15 @@ void resetRF() {
 }
 
 bool isTimeout(unsigned long timeToCheck, unsigned long timeoutTime) {
-  return (millis() - timeToCheck > timeoutTime) ? true : false;
+
+// Serial.println();
+
+//   Serial.print(F("timeToCheck: ")); Serial.println(timeToCheck);
+//   Serial.print(F("timeoutTime: ")); Serial.println(timeoutTime);
+//   Serial.print(F("millis: ")); Serial.println(millis());
+
+
+  return ((millis() - timeToCheck) > timeoutTime) ? true : false;
 }
 
 bool isGarageOccupied() {
@@ -518,14 +552,25 @@ bool handleNewRFCommuncation() {
   if(cipherSuccessful) {
     // 3.   Send encrypted string and check if there's an ACK
     if(CONFIG.use_network) client.publish(garageDoorLogTopic, F("Send encrypted string by RF, wait for ack"));
-    CONFIG.RF.sendTime = millis();
-    if(radio.write(cipherVector.bPlaintext, STRING_SIZE)) {
-      ackReceived = true;
-      if(CONFIG.use_network) client.publish(garageDoorLogTopic, F("Ack successful, wait for answer"));
-      Serial.println(F("# String successfully sent"));
-      Serial.println(F("#"));
-      Serial.println(F(""));
+
+
+    if(CONFIG.RF.state) {
+      CONFIG.RF.sendTime = millis();
+      if(radio.write(cipherVector.bPlaintext, STRING_SIZE)) {
+        ackReceived = true;
+        if(CONFIG.use_network) client.publish(garageDoorLogTopic, F("Ack successful, wait for answer"));
+        Serial.println(F("# String successfully sent"));
+        Serial.println(F("#"));
+        Serial.println(F(""));
+      }
     }
+    else {
+      String reason = F("RF module is not ready");
+      if(CONFIG.use_network) client.publish(garageDoorLogTopic, reason);
+      reboot(reason);
+    }
+
+
 
     if(ackReceived) {
       // 4.   Wait until receiving a string or until timeout
@@ -631,6 +676,9 @@ void checkIfSensorsChanged() {
 
   if(isGarageDoorOpen.lastState != isGarageDoorOpen.currentState) {
     // State has changed, let's check which way
+
+    Serial.print(F("Door status changed. It's now: "));
+
     if( !isGarageDoorOpen.currentState ) {
       // Door is closing
       isGarageDoorOpen.mqttPayload = "closing";
@@ -1021,7 +1069,11 @@ void handleGarage() {
           unsigned long doorMovementStartTime = millis();
           while( isDoorClosed() ) {
             delay(1); // Give the door some time to start the movement
-            if( isTimeout(doorMovementStartTime, 5000)) reboot();
+            if( isTimeout(doorMovementStartTime, 5000)) {
+              String reason = F("Door did not start movement in time");
+              if(CONFIG.use_network) client.publish(garageDoorLogTopic, reason + String(F(", reboot now")));
+              reboot(reason);
+            }
           } 
         
           client.publish(garageDoorLogTopic, "The door was opened by " + getTriggerName(triggerType) );
@@ -1095,7 +1147,11 @@ void handleGarage() {
         // Wait until the door started movement
         while( isDoorOpen() ) {
           delay(1); // Give the door some time to start the movement
-          if( isTimeout(doorMovementStartTime, 5000)) reboot();
+          if( isTimeout(doorMovementStartTime, 5000)) {
+            String reason = F("Door did not start movement in time");
+            if(CONFIG.use_network) client.publish(garageDoorLogTopic, reason + String(F(", reboot now")));
+            reboot(reason);
+          }
         } 
 
         delay(100);
@@ -1134,7 +1190,11 @@ void handleGarage() {
           unsigned long doorMovementStartTime = millis();
           while( isDoorOpen() ) {
             delay(1); // Give the door some time to start the movement
-            if( isTimeout(doorMovementStartTime, 5000)) reboot();
+            if( isTimeout(doorMovementStartTime, 5000)) {
+              String reason = F("Door did not start movement in time");
+              if(CONFIG.use_network) client.publish(garageDoorLogTopic, reason + String(F(", reboot now")));
+              reboot(reason);
+            }
           } 
 
           delay(100);
@@ -1159,7 +1219,11 @@ void handleGarage() {
           unsigned long doorMovementStartTime = millis();
           while( isDoorOpen() ) {
             delay(10); // Give the door some time to start the movement
-            if( isTimeout(doorMovementStartTime, 5000)) reboot();
+            if( isTimeout(doorMovementStartTime, 5000)) {
+              String reason = F("Door did not start movement in time");
+              if(CONFIG.use_network) client.publish(garageDoorLogTopic, reason + String(F(", reboot now")));
+              reboot(reason);
+            }
           } 
 
           delay(100);
@@ -1173,8 +1237,9 @@ void handleGarage() {
 }
 
 
-void reboot() {
-  Serial.println("REBOOT!");
+void reboot(String reason) {
+  Serial.println(F("REBOOT!"));
+  Serial.print(F("Reason: ")); Serial.println(reason);
   wdt_enable(WDTO_1S);
   while(true) {}
 }
