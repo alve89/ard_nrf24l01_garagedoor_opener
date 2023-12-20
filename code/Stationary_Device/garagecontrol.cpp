@@ -327,6 +327,8 @@ void publishConfig() {
 
 void connect() {
 
+  if( CONFIG.use_logging ) log(F("Connect to MQTT server"));
+
   // TODO: Check if initializers work (added after last test), see also INO L243
   const char userTemp[CONFIG.MQTT.getUser().length()+1] = "";
   const char pwdTemp[CONFIG.MQTT.getPwd().length()+1] = "";
@@ -1240,11 +1242,32 @@ void handleGarage() {
 void reboot(String reason) {
   Serial.println(F("REBOOT!"));
   Serial.print(F("Reason: ")); Serial.println(reason);
+  if( CONFIG.use_logging ) log(reason);
   wdt_enable(WDTO_1S);
   while(true) {}
 }
 
+void log(String msg) {
 
+  // logFile = SD.open("log.txt", FILE_WRITE);
+
+  logFile = SD.open(CONFIG.logfile, FILE_WRITE);
+
+  if (logFile) {                                            
+    Serial.print(F("Write to "));
+    Serial.println(CONFIG.logfile);
+
+    // if (logFile.available()) {  
+    if( logFile ) {
+      // char buf[msg.length()+1];
+      // msg.toCharArray(buf);                        
+      // logFile.write(logFile.write(buf));
+      logFile.println(msg);
+
+    }
+    logFile.close();
+  }
+}
 
 
 

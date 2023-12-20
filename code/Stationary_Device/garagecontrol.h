@@ -6,6 +6,7 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include <SD.h>
 #include <SHA256.h>
 #include <CryptoCstm.h>
 #include <SpeckTiny.h>
@@ -154,13 +155,14 @@ class config {
 
         config();
 
-
+        bool use_logging = true;
         bool use_network = true;
         bool testing_only = false;
         bool dhcpInitSuccessful = false;
         uint8_t doorAreaClearingTime = 25; // seconds
+        String logfile = "log.txt";
         uint8_t RFAreaClearingTime = 30; // seconds
-        uint8_t rebootCycle = 24; // hours
+        uint8_t rebootCycle = 2; // hours
         float ldrTolerance         = 30; // integer, will be transformed to percentage
         unsigned long bootingTime = 0;
         pin pins[20];
@@ -227,6 +229,7 @@ extern sensor garageOccupancy;
 extern CipherVector cipherVector;
 
 extern byte BUFFER[STRING_SIZE];
+extern File logFile;
 
 
 bool handleCipher(BlockCipher *, const struct CipherVector *, size_t, bool = true);
@@ -262,6 +265,8 @@ void isrButton();
 void handleGarage();
 
 void displayEncryptedString(const struct CipherVector*);
+
+void log(String);
 
 
 

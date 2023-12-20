@@ -6,6 +6,7 @@ EthernetClient net;
 MQTTClient client(1024);
 RF24 radio(7, 8);  // CE, CSN
 SpeckTiny speckTiny;
+File logFile;
 
 sensor isGarageDoorClosed((String) "homeassistant/cover/garage_door/state");
 sensor isGarageDoorOpen((String) "homeassistant/cover/garage_door/state");
@@ -125,10 +126,8 @@ void setup() {
 
   wdt_disable();  /* Disable the watchdog and wait for more than 2 seconds */
   delay(3000);  /* Done so that the Arduino doesn't keep resetting infinitely in case of wrong configuration */
-//  wdt_enable(WDTO_2S);  /* Enable the watchdog with a timeout of 2 seconds */
+  //  wdt_enable(WDTO_2S);  /* Enable the watchdog with a timeout of 2 seconds */
 
-  // put your setup code here, to run once:
-  // Setup Serial
 
   Serial.begin(115200);
   while (!Serial) {}
@@ -137,34 +136,50 @@ void setup() {
 
 
 
+  Serial.println("Initialisiere SD-Karte");
+  bool sdState = false; 
+  unsigned long sdInitStartTime = millis();
+  if(!SD.begin(5)) {
+    while(true) {
+      if( SD.begin(5) ) {                                     // Wenn die SD-Karte nicht (!SD.begin) gefunden werden kann, ...
+        sdState = true;    // ... soll eine Fehlermeldung ausgegeben werden. ....
+        break;
+      }
+      if( isTimeout(sdInitStartTime, 3000)) {
+        sdState = false;
+        break;
+      }
+    }
+  }
 
 
+  if( !sdState ) {
+    reboot(F("SD card not initialized"));
+  }
+  else {
+    Serial.println(F("SD card successfully initialized"));
+  }
 
+  if( CONFIG.use_logging ) log(F("Config - Begin pin configuration"));
 
+  CONFIG.MQTT.maxPayloadSize  = 1024;
 
+  CONFIG.newPin("garageOccupancy", A1, false);
+  CONFIG.newPin("laser", 9, false);
+  CONFIG.newPin("doorClosed", 11, true);
+  CONFIG.newPin("doorOpen", 6, true);
+  CONFIG.newPin("relay", 5, false);
+  CONFIG.newPin("button", 21, true);
+  CONFIG.newPin("key", 20, true);
+  CONFIG.newPin("enableTesting", 3, true);
+  CONFIG.newPin("disableNetwork", 2, true);
+  CONFIG.newPin("ledNoAck", A5, false);
+  CONFIG.newPin("ledAck", A5, false);
+  CONFIG.newPin("ledSending", A5, false);
+  CONFIG.newPin("unused", A0, false);
 
-
-
-
-
-CONFIG.MQTT.maxPayloadSize  = 1024;
-
-CONFIG.newPin("garageOccupancy", A1, false);
-CONFIG.newPin("laser", 9, false);
-CONFIG.newPin("doorClosed", 11, true);
-CONFIG.newPin("doorOpen", 6, true);
-CONFIG.newPin("relay", 5, false);
-CONFIG.newPin("button", 21, true);
-CONFIG.newPin("key", 20, true);
-CONFIG.newPin("enableTesting", 3, true);
-CONFIG.newPin("disableNetwork", 2, true);
-CONFIG.newPin("ledNoAck", A5, false);
-CONFIG.newPin("ledAck", A5, false);
-CONFIG.newPin("ledSending", A5, false);
-CONFIG.newPin("unused", A0, false);
-
-CONFIG.newPin("rf_csn", 8);
-CONFIG.newPin("rf_ce", 7);
+  CONFIG.newPin("rf_csn", 8);
+  CONFIG.newPin("rf_ce", 7);
 
 
 
@@ -195,10 +210,13 @@ CONFIG.newPin("rf_ce", 7);
   Serial.println(F("GPIOs ready"));
   delay(500);
 
+  // Check if hw switches are on or off (for TEST and USE_NETWORK)
   checkConfig();
 
 
 
+
+  if( CONFIG.use_logging ) log(F("Config - Begin RF configuration"));
 
 
   // Setup RF
@@ -215,33 +233,39 @@ CONFIG.newPin("rf_ce", 7);
   // Setup network
   if(CONFIG.use_network) {
 
+    if( CONFIG.use_logging ) log(F("Config - Begin Ethernet configuration"));
+
     Serial.println(F("Initialize Ethernet with DHCP:"));
 
     unsigned long dhcpInitStartTime = millis();
-    
-    if( CONFIG.use_network ) {
-      while( true ) {
-        Serial.println(F("Trying to initialize DHCP"));
-        if( Ethernet.begin(mac) == 0 ) {
-          // DHCP init failed
-          CONFIG.use_network = false;
-          CONFIG.dhcpInitSuccessful = false;
-        }
-        else {
-          // DHCP init successful
-          CONFIG.use_network = true;
-          CONFIG.dhcpInitSuccessful = true;
-          break;
-        }
-        if(isTimeout(dhcpInitStartTime, 5000)) break;
+
+    while( true ) {
+      Serial.println(F("Trying to initialize DHCP"));
+      if( Ethernet.begin(mac) == 0 ) {
+        // DHCP init failed
+        CONFIG.use_network = false;
+        CONFIG.dhcpInitSuccessful = false;
+        if( CONFIG.use_logging ) log(F("Ethernet - Ethernet.begin() failed"));
       }
+      else {
+        // DHCP init successful
+        CONFIG.use_network = true;
+        CONFIG.dhcpInitSuccessful = true;
+        if( CONFIG.use_logging ) log(F("Ethernet - Ethernet.begin() successful"));
+        break;
+      }
+      if(isTimeout(dhcpInitStartTime, 5000)) break;
     }
     
+
+
     if( !CONFIG.dhcpInitSuccessful ) {
       Serial.println(F("Failed to configure Ethernet using DHCP"));
+      if( CONFIG.use_logging ) log(F("Ethernet - Configuring DHCP failed"));
       // Check for Ethernet hardware present
       if (Ethernet.hardwareStatus() == EthernetNoHardware) {
         Serial.println(F("Ethernet shield was not found.  Sorry, can't run without hardware."));
+        if( CONFIG.use_logging ) log(F("Ethernet - No hardware found"));
         unsigned long ethernetStartTime = millis();
         while (true) {
           if( isTimeout(ethernetStartTime, 5000)) CONFIG.use_network = false;
@@ -249,19 +273,23 @@ CONFIG.newPin("rf_ce", 7);
       }
       if (Ethernet.linkStatus() == LinkOFF) {
         Serial.println(F("Ethernet cable is not connected."));
+        if( CONFIG.use_logging ) log(F("Ethernet - Cable not connected"));
       }
       // try to congifure using IP address instead of DHCP:
       Ethernet.begin(mac, ip, myDns);
       Serial.println(F("Started Ethernet with manually assigned IP"));
+      if( CONFIG.use_logging ) log(F("Ethernet - Started Ethernet with manually assigned IP"));
       
     } else {
       Serial.print(F("  DHCP assigned IP "));
       Serial.println(Ethernet.localIP());
+      if( CONFIG.use_logging ) log(F("Ethernet - DHCP initialization successful"));
     }
 
 
     // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
     // by Arduino. You need to set the IP address directly.
+    if( CONFIG.use_logging ) log(F("Config - Begin MQTT configuration"));
     const char hostAddressTemp[CONFIG.MQTT.getHostAddress().length()+1] = "";
     CONFIG.MQTT.getHostAddress().toCharArray(hostAddressTemp, CONFIG.MQTT.getHostAddress().length()+1);
     client.begin(hostAddressTemp, net);
@@ -271,9 +299,12 @@ CONFIG.newPin("rf_ce", 7);
     connect();
 
     // Publish basic configuration of MQTT HA-entities
+    if( CONFIG.use_logging ) log(F("MQTT - Publish configuration to broker"));
     publishConfig();
 
+    if( CONFIG.use_logging ) log(F("MQTT - Clear command topic"));
     client.publish(garageDoorCommandTopic, "", true, 0); // First delete this payload
+    if( CONFIG.use_logging ) log(F("MQTT - Subscribe to command topic"));
     client.subscribe(garageDoorCommandTopic); // Then subscribe to this topic
 
 
@@ -281,6 +312,8 @@ CONFIG.newPin("rf_ce", 7);
     isGarageDoorClosed.currentState = isDoorClosed();
     isGarageDoorOpen.currentState = isDoorOpen();
     garageOccupancy.currentState = isGarageOccupied();
+
+    if( CONFIG.use_logging ) log(F("MQTT - Publish current sensors states to broker"));
 
     if(garageOccupancy.currentState) {
       garageOccupancy.mqttPayload = "ON";
@@ -306,6 +339,7 @@ CONFIG.newPin("rf_ce", 7);
       client.publish(isGarageDoorClosed.mqttStateTopic, "Unknown");
     }
 
+    if( CONFIG.use_logging ) log(F("MQTT - Publish RF status to broker"));
 
     if(CONFIG.RF.state) {
       client.publish(garageRFStateTopic, F("ON"));
@@ -314,9 +348,9 @@ CONFIG.newPin("rf_ce", 7);
       client.publish(garageRFStateTopic, F("OFF"));
     }
 
-
+    if( CONFIG.use_logging ) log(F("Config - Finished booting"));
     client.publish(garageDoorLogTopic, F("Device has finished booting, run loop() now"));
-    client.publish(garageBootTimeTopic, F("hello")); // TODO Replace by NTP time
+    client.publish(garageBootTimeTopic, (String) millis()); // TODO Replace by NTP time
 
 
   }
@@ -335,10 +369,11 @@ CONFIG.newPin("rf_ce", 7);
 void loop() {
 
   // Re-initialize the RF module
+  if( CONFIG.use_logging ) log(F("loop() - Re-initialize RF module"));
   CONFIG.RF.init();
 
   if(CONFIG.use_network) {
-
+    if( CONFIG.use_logging ) log(F("loop() - Maintain ethernet network connection"));
     // Renew the DHCP connection
     switch( Ethernet.maintain() ) {
       case 1:
@@ -373,6 +408,7 @@ void loop() {
     }
 
     // Send keep-alive information to MQTT server
+    if( CONFIG.use_logging ) log(F("loop() - Send keep-alive to MQTT server"));
     client.loop();
 
     // If client is not connected to MQTT server, re-connect it
@@ -382,6 +418,7 @@ void loop() {
 
     // Publish changed RF state to MQTT
     if( CONFIG.RF.stateChanged() ) {
+      if( CONFIG.use_logging ) log(F("loop() - Publish changed RF state to MQTT broker"));
       if(CONFIG.RF.state) {
         client.publish(garageRFStateTopic, F("ON"));
       }
@@ -394,21 +431,25 @@ void loop() {
   }
 
   // Check if any sensor changed its state
+  if( CONFIG.use_logging ) log(F("loop() - Check if sensors changed"));
   checkIfSensorsChanged();
 
   // Check if a recently received MQTT message is relevant for the door control
+  if( CONFIG.use_logging ) log(F("loop() - Check if MQTT topic changed"));
   checkChangedMqttTopic();
 
   // Handle the sensor/actor controlling
+  if( CONFIG.use_logging ) log(F("loop() - Handle garage"));
   handleGarage(); // TODO Garage closes after reboot when no car is inside
 
 
 
 
-  if(isTimeout(CONFIG.bootingTime, CONFIG.rebootCycle*(3600ul*1000ul))) {  // Reboot device after 24 hours
-      String reason = F("Auto-reboot after configured time [CONFIG.rebootCycle]");
-      if(CONFIG.use_network) client.publish(garageDoorLogTopic, reason + String(F(", reboot now")));
-      reboot(reason); // TODO Add MQTT information for reboot time
+  if(isTimeout(CONFIG.bootingTime, CONFIG.rebootCycle*(3600ul*1000ul))) {  // Reboot device after X hours
+    if( CONFIG.use_logging ) log(F("loop() - Reboot cycle reached"));
+    String reason = F("Auto-reboot after configured time [CONFIG.rebootCycle]");
+    if(CONFIG.use_network) client.publish(garageDoorLogTopic, reason + String(F(", reboot now")));
+    reboot(reason); // TODO Add MQTT information for reboot time
   }
 
 }

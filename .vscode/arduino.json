@@ -1,6 +1,6 @@
 {
     "board": "arduino:avr:mega",
-    "sketch": "code\\231020_Stationary_Device\\231020_Stationary_Device.ino",
-    "port": "COM4",
+    "sketch": "code\\Stationary_Device\\Stationary_Device.ino",
+    "port": "COM12",
     "configuration": "cpu=atmega2560"
 }
