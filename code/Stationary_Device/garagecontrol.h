@@ -172,7 +172,7 @@ class config {
         mqtt MQTT;
 
         
-        void newPin(String, uint16_t, bool = false);
+        void newPin(String pinName, uint16_t pinNumber, bool pinInverted=false);
 
 
 

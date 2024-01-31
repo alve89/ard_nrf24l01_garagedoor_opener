@@ -11,8 +11,6 @@ on:
   push:
     branches: # do not set multiple branches, todos might be added and then get referenced by themselves in case of a merge
       - main
-      - master
-      - dev_*
 
 permissions:
   issues: write

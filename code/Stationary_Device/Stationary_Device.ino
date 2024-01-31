@@ -168,7 +168,7 @@ void setup() {
   CONFIG.newPin("laser", 9, false);
   CONFIG.newPin("doorClosed", 11, true);
   CONFIG.newPin("doorOpen", 6, true);
-  CONFIG.newPin("relay", 5, false);
+  CONFIG.newPin("relay", 5, true);
   CONFIG.newPin("button", 21, true);
   CONFIG.newPin("key", 20, true);
   CONFIG.newPin("enableTesting", 3, true);
