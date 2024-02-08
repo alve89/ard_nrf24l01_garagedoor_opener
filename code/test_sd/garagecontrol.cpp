@@ -90,6 +90,13 @@ void config::newPin(String pinName, uint16_t pinNumber, bool pinInverted) {
 //   return NULL;
 }
 
+void config::setVersion(String v) {
+  ver = v;
+}
+
+String config::version() {
+  return ver;
+}
 
 config::pin* config::getPinByName(String pinName) {
 //   try {

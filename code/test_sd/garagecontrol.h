@@ -159,21 +159,23 @@ class config {
         bool use_network = true;
         bool testing_only = false;
         bool dhcpInitSuccessful = false;
-        String logfile = "log.txt";
         uint8_t doorAreaClearingTime = 25; // seconds
+        String logfile = "log.txt";
         uint8_t RFAreaClearingTime = 30; // seconds
         uint8_t rebootCycle = 2; // hours
         float ldrTolerance         = 30; // integer, will be transformed to percentage
         unsigned long bootingTime = 0;
         pin pins[20];
         pin* getPinByName(String);
+        String ver;
 
         rf RF;
         mqtt MQTT;
 
         
-        void newPin(String, uint16_t, bool = false);
-
+        void newPin(String pinName, uint16_t pinNumber, bool pinInverted=false);
+        void setVersion(String v);
+        String version();
 
 
 

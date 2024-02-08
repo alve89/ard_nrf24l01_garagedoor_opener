@@ -167,13 +167,15 @@ class config {
         unsigned long bootingTime = 0;
         pin pins[20];
         pin* getPinByName(String);
+        String ver;
 
         rf RF;
         mqtt MQTT;
 
         
         void newPin(String pinName, uint16_t pinNumber, bool pinInverted=false);
-
+        void setVersion(String v);
+        String version();
 
 
 

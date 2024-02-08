@@ -90,6 +90,13 @@ void config::newPin(String pinName, uint16_t pinNumber, bool pinInverted) {
 //   return NULL;
 }
 
+void config::setVersion(String v) {
+  ver = v;
+}
+
+String config::version() {
+  return ver;
+}
 
 config::pin* config::getPinByName(String pinName) {
 //   try {
@@ -1248,6 +1255,8 @@ void reboot(String reason) {
 }
 
 void log(String msg) {
+
+  if( !CONFIG.use_logging ) return;
 
   // logFile = SD.open("log.txt", FILE_WRITE);
 

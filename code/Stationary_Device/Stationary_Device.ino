@@ -13,69 +13,10 @@ sensor isGarageDoorOpen((String) "homeassistant/cover/garage_door/state");
 sensor garageOccupancy((String) "homeassistant/binary_sensor/garage_occupancy/state");
 
 
-
-
-//byte CONFIG.RF.address[6] = {0x30, 0x30, 0x30, 0x30, 0x31}; // 00001
-// const byte RADIO_ADDRESS[6]           = "00001";
-// uint8_t CONFIG.RF.readingPipe             = 0;
-// uint8_t RADIO_CHANNEL                 = 0;
-// bool RADIO_DYNAMIC_PAYLOAD_SIZE       = false;
-
-
-
-
-// const bool _INVERT_GARAGE_OCCUPATION  = false;
-// const bool _INVERT_DOOR_OPEN_STATUS   = true;
-// const bool _INVERT_DOOR_CLOSED_STATUS = true;
-// const bool _INVERT_ENABLE_TESTING     = true;
-// const bool _INVERT_DISABLE_NETWORK    = true;
-// const bool _INVERT_LIGHTBARRIER       = false;
-// const bool _INVERT_BUTTON_HW          = true;
-// const bool _INVERT_KEY_HW             = true;
-
-
-
-
-// const uint8_t _PIN_GARAGE_OCCUPANCY   = A1;
-// const uint8_t _PIN_DOOR_CLOSED        = 11;
-// const uint8_t _PIN_LIGHTBARRIER       = 9;
-// const uint8_t _PIN_RF_CSN             = 8;
-// const uint8_t _PIN_RF_CE              = 7;
-// const uint8_t _PIN_DOOR_OPEN          = 6;
-// const uint8_t _PIN_RELAY              = 5;
-// const uint8_t _PIN_BUTTON_HW          = 21;
-// const uint8_t _PIN_KEY_HW             = 20;
-// const uint8_t _PIN_ENABLE_TESTING     = 3;
-// const uint8_t _PIN_DISABLE_NETWORK    = 2;
-
-// const uint8_t _PIN_STATUS_NO_ACK      = A5;
-// const uint8_t _PIN_STATUS_ACK         = A5;
-// const uint8_t _PIN_STATUS_SENDING     = A5;
-// const uint8_t _PIN_UNUSED             = A0;  // For random seed
-
-
-
-
-
-
-
-// const uint16_t TIMEOUT                = 3000; 
-// const uint8_t WAIT_FOR_NEXT_RF_SENDING= 5;  // seconds
-// const uint8_t DOOR_AREA_CLEARING_TIME = 15;  // seconds
-// const uint8_t RF_AREA_CLEARING_TIME   = 25;  // seconds
-// const float LDR_TOLERANCE             = 30; // integer, will be transformed to percentage
-// const uint16_t LDR_TRESHOLD           = 600; // value of analoagRead()
-
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
-byte ip[] = {192, 168, 20, 177};  // <- change to match your network
+byte ip[] = {192, 168, 20, 147};  // <- change to match your network
 IPAddress myDns(192, 168, 20, 1);
 byte BUFFER[STRING_SIZE];
-
-// char mqttHostAddress[] = "homecontrol.lan.k4";
-// const char mqttUser[] = "test";
-// const char mqttPwd[] = "qoibOIBbfoqib38bqucv3u89qv";
-// const char mqttClientId[] = "garage_sensors";
-
 
 
 // Define the vector vectors from http://eprint.iacr.org/2013/404
@@ -86,14 +27,6 @@ static CipherVector cipherVector = {
   .bPlaintext = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
   .bCiphertext = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }
 };
-
-
-
-
-
-
-
-
 
 
 
@@ -121,6 +54,9 @@ String garageBootTimeTopic = "homeassistant/sensor/garage_boot_time/state";
 
 void setup() {
 
+  CONFIG.setVersion("0.0.1");
+  CONFIG.use_logging = false;
+
   CONFIG.bootingTime = millis();
 
 
@@ -133,33 +69,36 @@ void setup() {
   while (!Serial) {}
   Serial.println(F("Serial ready"));
   delay(500);
+  Serial.println(String("Version: ") + CONFIG.version());
+  delay(500);
 
 
-
-  Serial.println("Initialisiere SD-Karte");
-  bool sdState = false; 
-  unsigned long sdInitStartTime = millis();
-  if(!SD.begin(5)) {
-    while(true) {
-      if( SD.begin(5) ) {                                     // Wenn die SD-Karte nicht (!SD.begin) gefunden werden kann, ...
-        sdState = true;    // ... soll eine Fehlermeldung ausgegeben werden. ....
-        break;
-      }
-      if( isTimeout(sdInitStartTime, 3000)) {
-        sdState = false;
-        break;
+  if( CONFIG.use_logging ) {
+    Serial.println(F("Initialize SD card"));
+    bool sdState = false; 
+    unsigned long sdInitStartTime = millis();
+    if(!SD.begin(5)) {
+      while(true) {
+        if( SD.begin(5) ) {                                     // Wenn die SD-Karte nicht (!SD.begin) gefunden werden kann, ...
+          sdState = true;    // ... soll eine Fehlermeldung ausgegeben werden. ....
+          break;
+        }
+        if( isTimeout(sdInitStartTime, 3000)) {
+          sdState = false;
+          break;
+        }
       }
     }
-  }
 
 
-  if( !sdState ) {
-    reboot(F("SD card not initialized"));
-  }
-  else {
-    Serial.println(F("SD card successfully initialized"));
-  }
+    if( !sdState ) {
+      reboot(F("SD card not initialized"));
+    }
+    else {
+      Serial.println(F("SD card successfully initialized"));
+    }
 
+  }
   if( CONFIG.use_logging ) log(F("Config - Begin pin configuration"));
 
   CONFIG.MQTT.maxPayloadSize  = 1024;
