@@ -146,6 +146,10 @@ void setup() {
   pinMode(CONFIG.getPinByName("ledAck")->getNumber(), OUTPUT);
   pinMode(CONFIG.getPinByName("ledNoAck")->getNumber(), OUTPUT);
   pinMode(CONFIG.getPinByName("ledSending")->getNumber(), OUTPUT);
+
+  digitalWrite(CONFIG.getPinByName("laser")->getNumber(), CONFIG.getPinByName("laser")->isInverted());
+  digitalWrite(CONFIG.getPinByName("relay")->getNumber(), CONFIG.getPinByName("relay")->isInverted());
+
   Serial.println(F("GPIOs ready"));
   delay(500);
 
