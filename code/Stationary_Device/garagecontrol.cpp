@@ -267,69 +267,69 @@ void publishConfig() {
   "   }"
   "}" );
 
-    String garage_button_log = F("{"
-  "   \"retain\":true,"  
-  "   \"name\":\"Garage Button Log\","
-  "   \"state_topic\":\"homeassistant/sensor/garage_button_log/state\","
-  "   \"unique_id\":\"garage_button_log\","
-  "   \"device\": {"
-  "     \"identifiers\":["
-  "       \"garage_sensors/config\""
-  "       ],"
-  "      \"name\":\"Garage Sensors\""
-  "   }"
-  "}" );
+  //   String garage_button_log = F("{"
+  // "   \"retain\":true,"  
+  // "   \"name\":\"Garage Button Log\","
+  // "   \"state_topic\":\"homeassistant/sensor/garage_button_log/state\","
+  // "   \"unique_id\":\"garage_button_log\","
+  // "   \"device\": {"
+  // "     \"identifiers\":["
+  // "       \"garage_sensors/config\""
+  // "       ],"
+  // "      \"name\":\"Garage Sensors\""
+  // "   }"
+  // "}" );
 
-    String garage_key_log = F("{"
-  "   \"retain\":true,"  
-  "   \"name\":\"Garage Key Log\","
-  "   \"state_topic\":\"homeassistant/sensor/garage_key_log/state\","
-  "   \"unique_id\":\"garage_key_log\","
-  "   \"device\": {"
-  "     \"identifiers\":["
-  "       \"garage_sensors/config\""
-  "       ],"
-  "      \"name\":\"Garage Sensors\""
-  "   }"
-  "}" );
+  //   String garage_key_log = F("{"
+  // "   \"retain\":true,"  
+  // "   \"name\":\"Garage Key Log\","
+  // "   \"state_topic\":\"homeassistant/sensor/garage_key_log/state\","
+  // "   \"unique_id\":\"garage_key_log\","
+  // "   \"device\": {"
+  // "     \"identifiers\":["
+  // "       \"garage_sensors/config\""
+  // "       ],"
+  // "      \"name\":\"Garage Sensors\""
+  // "   }"
+  // "}" );
   
-      String garage_rf_state = F("{"
-  "   \"retain\":true,"  
-  "   \"name\":\"Garage RF State\","
-  "   \"state_topic\":\"homeassistant/binary_sensor/garage_rf_state/state\","
-  "   \"unique_id\":\"garage_rf_state\","
-  "   \"device\": {"
-  "     \"identifiers\":["
-  "       \"garage_sensors/config\""
-  "       ],"
-  "      \"name\":\"Garage Sensors\""
-  "   }"
-  "}" );
+  //     String garage_rf_state = F("{"
+  // "   \"retain\":true,"  
+  // "   \"name\":\"Garage RF State\","
+  // "   \"state_topic\":\"homeassistant/binary_sensor/garage_rf_state/state\","
+  // "   \"unique_id\":\"garage_rf_state\","
+  // "   \"device\": {"
+  // "     \"identifiers\":["
+  // "       \"garage_sensors/config\""
+  // "       ],"
+  // "      \"name\":\"Garage Sensors\""
+  // "   }"
+  // "}" );
 
 
-        String garage_boot_time = F("{"
-  "   \"retain\":true,"  
-  "   \"name\":\"Garage Boot Time\","
-  "   \"state_topic\":\"homeassistant/sensor/garage_boot_time/state\","
-  "   \"unique_id\":\"garage_boot_time\","
-  "   \"device\": {"
-  "     \"identifiers\":["
-  "       \"garage_sensors/config\""
-  "       ],"
-  "      \"name\":\"Garage Sensors\""
-  "   }"
-  "}" );
+  //       String garage_boot_time = F("{"
+  // "   \"retain\":true,"  
+  // "   \"name\":\"Garage Boot Time\","
+  // "   \"state_topic\":\"homeassistant/sensor/garage_boot_time/state\","
+  // "   \"unique_id\":\"garage_boot_time\","
+  // "   \"device\": {"
+  // "     \"identifiers\":["
+  // "       \"garage_sensors/config\""
+  // "       ],"
+  // "      \"name\":\"Garage Sensors\""
+  // "   }"
+  // "}" );
  
 
   client.publish(F("homeassistant/binary_sensor/garage_occupancy/config"), garage_occupancy);
   client.publish(F("homeassistant/cover/garage_door/config"), garage_door);
   client.publish(F("homeassistant/sensor/garage_current_action/config"), garage_sensors_action);
   
-  client.publish(F("homeassistant/sensor/garage_button_log/config"), garage_button_log);
-  client.publish(F("homeassistant/sensor/garage_key_log/config"), garage_key_log);
+  // client.publish(F("homeassistant/sensor/garage_button_log/config"), garage_button_log);
+  // client.publish(F("homeassistant/sensor/garage_key_log/config"), garage_key_log);
 
-  client.publish(F("homeassistant/binary_sensor/garage_rf_state/config"), garage_rf_state);
-  client.publish(F("homeassistant/sensor/garage_boot_time/config"), garage_boot_time);
+  // client.publish(F("homeassistant/binary_sensor/garage_rf_state/config"), garage_rf_state);
+  // client.publish(F("homeassistant/sensor/garage_boot_time/config"), garage_boot_time);
 } 
 
 void connect() {
@@ -955,7 +955,7 @@ void isrButton() {
   if( CONFIG.use_network ) {
     bool status = CONFIG.getPinByName("button")->getState();
     String state = status ? "ON" : "OFF";
-    client.publish(garageButtonLogTopic, state);
+    // client.publish(garageButtonLogTopic, state);
   }
 
   return; // TODO Remove when fixed the button electronic
@@ -979,7 +979,7 @@ void isrKey() {
   if( CONFIG.use_network ) {
     bool status = CONFIG.getPinByName("key")->getState();
     String state = status ? "ON" : "OFF";
-    client.publish(garageKeyLogTopic, state);
+    // client.publish(garageKeyLogTopic, state);
   }
 
   return; // TODO Remove when fixed the key electronic

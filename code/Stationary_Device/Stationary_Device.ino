@@ -41,10 +41,10 @@ String garageDoorCommandPayloadOpen = "OPEN";
 String garageDoorCommandPayloadClose = "CLOSE";
 String garageDoorCommandPayloadStop = "STOP";
 String garageDoorLogTopic = "homeassistant/sensor/garage_current_action/state";
-String garageButtonLogTopic = "homeassistant/sensor/garage_button_log/state";
-String garageKeyLogTopic = "homeassistant/sensor/garage_key_log/state";
-String garageRFStateTopic = "homeassistant/binary_sensor/garage_rf_state/state";
-String garageBootTimeTopic = "homeassistant/sensor/garage_boot_time/state";
+// String garageButtonLogTopic = "homeassistant/sensor/garage_button_log/state";
+// String garageKeyLogTopic = "homeassistant/sensor/garage_key_log/state";
+// String garageRFStateTopic = "homeassistant/binary_sensor/garage_rf_state/state";
+// String garageBootTimeTopic = "homeassistant/sensor/garage_boot_time/state";
 
 
 
@@ -289,15 +289,15 @@ void setup() {
     if( CONFIG.use_logging ) log(F("MQTT - Publish RF status to broker"));
 
     if(CONFIG.RF.state) {
-      client.publish(garageRFStateTopic, F("ON"));
+      // client.publish(garageRFStateTopic, F("ON"));
     }
     else {
-      client.publish(garageRFStateTopic, F("OFF"));
+      // client.publish(garageRFStateTopic, F("OFF"));
     }
 
     if( CONFIG.use_logging ) log(F("Config - Finished booting"));
     client.publish(garageDoorLogTopic, F("Device has finished booting, run loop() now"));
-    client.publish(garageBootTimeTopic, (String) millis()); // TODO Replace by NTP time
+    // client.publish(garageBootTimeTopic, (String) millis()); // TODO Replace by NTP time
 
 
   }
@@ -373,10 +373,10 @@ void loop() {
     if( CONFIG.RF.stateChanged() ) {
       if( CONFIG.use_logging ) log(F("loop() - Publish changed RF state to MQTT broker"));
       if(CONFIG.RF.state) {
-        client.publish(garageRFStateTopic, F("ON"));
+        // client.publish(garageRFStateTopic, F("ON"));
       }
       else {
-        client.publish(garageRFStateTopic, F("OFF"));
+        // client.publish(garageRFStateTopic, F("OFF"));
       }
     }    
 
