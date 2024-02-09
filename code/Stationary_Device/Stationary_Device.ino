@@ -1,4 +1,7 @@
 #include "garagecontrol.h"
+#define OTETHERNET
+#include <ArduinoOTA.h>
+
 
 
 config CONFIG;
@@ -300,12 +303,18 @@ void setup() {
 
   CONFIG.bootingTime = millis();
 
+  // start the OTEthernet library with internal (flash) based storage
+  ArduinoOTA.begin(Ethernet.localIP(), "Arduino", "password", InternalStorage);
+
 }
 
 
 
 
 void loop() {
+
+  // Wait for incoming OTA updates
+  ArduinoOTA.poll();
 
   // Re-initialize the RF module
   if( CONFIG.use_logging ) log(F("loop() - Re-initialize RF module"));
