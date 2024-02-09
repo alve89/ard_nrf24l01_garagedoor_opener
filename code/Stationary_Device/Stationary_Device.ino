@@ -40,6 +40,7 @@ String garageDoorCommandTopic = "homeassistant/cover/garage_door/set";
 String garageDoorCommandPayloadOpen = "OPEN";
 String garageDoorCommandPayloadClose = "CLOSE";
 String garageDoorCommandPayloadStop = "STOP";
+String garageDoorCommandPayloadReboot = "REBOOT";
 String garageDoorLogTopic = "homeassistant/sensor/garage_current_action/state";
 // String garageButtonLogTopic = "homeassistant/sensor/garage_button_log/state";
 // String garageKeyLogTopic = "homeassistant/sensor/garage_key_log/state";

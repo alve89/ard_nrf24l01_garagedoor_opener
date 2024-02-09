@@ -193,6 +193,7 @@ extern String garageDoorCommandTopic;
 extern String garageDoorCommandPayloadOpen;
 extern String garageDoorCommandPayloadClose;
 extern String garageDoorCommandPayloadStop;
+extern String garageDoorCommandPayloadReboot;
 extern String garageDoorLogTopic;
 extern String garageButtonLogTopic;
 extern String garageKeyLogTopic;

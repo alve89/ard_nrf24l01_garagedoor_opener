@@ -791,6 +791,12 @@ void checkChangedMqttTopic() {
           // Do nothing, unknown command
       }
     }
+    if(changedTopicPayload == garageDoorCommandPayloadReboot) {
+      String reason = F("Reboot initiated by MQTT");
+      client.publish(garageDoorCommandTopic, "", true, 0); // Delete this payload before rebooting
+      delay(10);
+      reboot(reason);
+    }
   }
 
   // Reset MQTT commands
