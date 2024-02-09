@@ -141,14 +141,15 @@ void setup() {
   */
   attachInterrupt(digitalPinToInterrupt(CONFIG.getPinByName("key")->getNumber()), isrKey, CHANGE );
   attachInterrupt(digitalPinToInterrupt(CONFIG.getPinByName("button")->getNumber()), isrButton, CHANGE );
+
+  digitalWrite(CONFIG.getPinByName("relay")->getNumber(), CONFIG.getPinByName("relay")->isInverted());
+  digitalWrite(CONFIG.getPinByName("laser")->getNumber(), CONFIG.getPinByName("laser")->isInverted());
+
   pinMode(CONFIG.getPinByName("laser")->getNumber(), OUTPUT);
   pinMode(CONFIG.getPinByName("relay")->getNumber(), OUTPUT);
   pinMode(CONFIG.getPinByName("ledAck")->getNumber(), OUTPUT);
   pinMode(CONFIG.getPinByName("ledNoAck")->getNumber(), OUTPUT);
   pinMode(CONFIG.getPinByName("ledSending")->getNumber(), OUTPUT);
-
-  digitalWrite(CONFIG.getPinByName("laser")->getNumber(), CONFIG.getPinByName("laser")->isInverted());
-  digitalWrite(CONFIG.getPinByName("relay")->getNumber(), CONFIG.getPinByName("relay")->isInverted());
 
   Serial.println(F("GPIOs ready"));
   delay(500);
