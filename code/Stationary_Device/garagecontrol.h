@@ -81,9 +81,9 @@ class config {
         class mqtt {
             public:
                 uint16_t maxPayloadSize = 1024; //MAX_MQTT_PAYLOAD_SIZE
-                String hostAddress = "homecontrol.lan.k4";
-                String user = "test";
-                String pwd = "qoibOIBbfoqib38bqucv3u89qv";
+                String hostAddress = "homelab.lan.k4";
+                String user = "garage";
+                String pwd = "9039inf39hHOISIhoi39qopiqw";
                 String clientId = "garage_sensors";
 
 

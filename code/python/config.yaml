@@ -1,0 +1,38 @@
+cipher:
+    key: "123456789ABCDEF00FEDCBA987654321"   # 128 bit key
+
+general:
+    rf:
+        sending_timeout:    5
+        receiving_timeout:  5
+
+pins:
+    actors:
+        relay:
+            number: 1
+            inverted: False
+        laser:
+            number: 2
+            inverted: False
+        led:
+            number: 3
+            inverted: False
+    sensors:
+        door_switch:
+            number: 4
+            inverted: False
+        button:
+            number: 5
+            inverted: False
+        light_barrier:
+            number: 6
+            inverted: False
+        door_open:
+            number: 7
+            inverted: False
+        door_closed:
+            number: 8
+            inverted: False
+    rf:
+        ce: 9
+        csn: 10

@@ -373,12 +373,12 @@ void loop() {
     // Publish changed RF state to MQTT
     if( CONFIG.RF.stateChanged() ) {
       if( CONFIG.use_logging ) log(F("loop() - Publish changed RF state to MQTT broker"));
-      if(CONFIG.RF.state) {
-        // client.publish(garageRFStateTopic, F("ON"));
-      }
-      else {
-        // client.publish(garageRFStateTopic, F("OFF"));
-      }
+        if(CONFIG.RF.state) {
+          // client.publish(garageRFStateTopic, F("ON"));
+        }
+        else {
+          // client.publish(garageRFStateTopic, F("OFF"));
+        }
     }    
 
     
